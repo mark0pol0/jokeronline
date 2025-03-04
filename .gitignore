@@ -1,14 +1,24 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
 # Ignore nested Git repository
 joker-pursuit/
 
-# Node modules
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
 node_modules/
 
-# Build files
+# testing
+/coverage
+
+# production
+/build
 dist/
 build/
 
-# Environment variables
+# misc
+.DS_Store
 .env
 .env.local
 .env.development.local
@@ -36,4 +46,4 @@ yarn-error.log*
 
 # Windows
 Thumbs.db
-ehthumbs.db 
+ehthumbs.db
