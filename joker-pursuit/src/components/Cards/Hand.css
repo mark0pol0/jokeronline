@@ -1,0 +1,19 @@
+.hand-container {
+  width: 100%;
+  padding: 20px;
+  overflow-x: auto;
+}
+
+.hand {
+  display: flex;
+  justify-content: center;
+  min-height: 160px;
+  padding-top: 20px;
+}
+
+/* Media queries for responsiveness */
+@media (max-width: 768px) {
+  .hand {
+    justify-content: flex-start;
+  }
+} 

@@ -1,0 +1,1150 @@
+import { BoardSpace } from '../models/BoardModel';
+import { Card } from '../models/Card';
+import { GameState, Move } from '../models/GameState';
+import { Player } from '../models/Player';
+import { BoardSection } from '../models/BoardModel';
+
+// Helper function to find the space containing a specific peg
+export const findSpaceForPeg = (gameState: GameState, pegId: string): BoardSpace | undefined => {
+  // Use Array.from() to convert Map values to an array before iterating
+  const allSpaces = Array.from(gameState.board.allSpaces.values());
+  for (const space of allSpaces) {
+    if (space.pegs.includes(pegId)) {
+      return space;
+    }
+  }
+  return undefined;
+};
+
+// Helper function to check if a move would pass over player's own pegs
+const wouldJumpOverOwnPeg = (
+  gameState: GameState, 
+  player: Player, 
+  fromSpace: BoardSpace, 
+  destinationSpace: BoardSpace,
+  isJokerMove: boolean
+): boolean => {
+  // If this is a joker move, we allow jumping over own pegs as per the exception
+  if (isJokerMove) {
+    return false;
+  }
+
+  // Get ordered spaces for board traversal - with sections in order
+  const orderedSpaces = Array.from(gameState.board.allSpaces.values())
+    .filter(s => s.type === 'normal' || s.type === 'entrance' || s.type === 'corner')
+    .sort((a, b) => {
+      // Sort by section first, then by index within section
+      if (a.sectionIndex !== b.sectionIndex) {
+        return a.sectionIndex! - b.sectionIndex!;
+      }
+      return a.index - b.index;
+    });
+
+  // Find start and end indices in the ordered list
+  const startIndex = orderedSpaces.findIndex(s => s.id === fromSpace.id);
+  const endIndex = orderedSpaces.findIndex(s => s.id === destinationSpace.id);
+  
+  if (startIndex === -1 || endIndex === -1) {
+    return false; // Could not find spaces in the ordered list
+  }
+
+  let pathSpaces: BoardSpace[];
+  
+  // Handle cases where movement wraps around the board
+  if (endIndex > startIndex) {
+    // Simple forward movement
+    pathSpaces = orderedSpaces.slice(startIndex + 1, endIndex);
+  } else {
+    // Movement that wraps around the board or goes backward
+    // First determine if this is likely a wraparound move
+    const isWraparound = fromSpace.sectionIndex! < destinationSpace.sectionIndex! ||
+                        (fromSpace.sectionIndex === destinationSpace.sectionIndex && 
+                         fromSpace.index < destinationSpace.index);
+                         
+    if (isWraparound) {
+      // We need to go from start to end of the array, then from start of array to end position
+      pathSpaces = [
+        ...orderedSpaces.slice(startIndex + 1),
+        ...orderedSpaces.slice(0, endIndex)
+      ];
+    } else {
+      // Normal backward movement
+      pathSpaces = [...orderedSpaces.slice(endIndex + 1, startIndex)].reverse();
+    }
+  }
+
+  // Check if any spaces in between have the player's pegs
+  return pathSpaces.some(space => 
+    space.pegs.some(existingPegId => {
+      const existingPlayerId = existingPegId.split('-peg-')[0];
+      return existingPlayerId === player.id;
+    })
+  );
+};
+
+// Helper function to check if slot 8 is blocked
+const isSlot8Blocked = (gameState: GameState, playerSection: BoardSection): boolean => {
+  const slot8Space = Array.from(gameState.board.allSpaces.values()).find(s => {
+    const isCorrectSection = s.id.startsWith(playerSection.id);
+    const isValidSpace = s.type === 'normal' || s.type === 'entrance';
+    const isSlot8 = s.index === 8;
+    return isCorrectSection && isValidSpace && isSlot8;
+  });
+
+  if (!slot8Space || !slot8Space.pegs) {
+    return false;
+  }
+  
+  return slot8Space.pegs.length > 0;
+};
+
+// Helper function to find an available home slot for a player
+const findAvailableHomeSlot = (gameState: GameState, playerId: string): BoardSpace | undefined => {
+  // Find the player's section
+  const playerSection = gameState.board.sections.find(section => 
+    section.playerIds?.includes(playerId)
+  );
+  
+  if (!playerSection) return undefined;
+  
+  // Find all home slots in the player's section
+  const homeSlots = Array.from(gameState.board.allSpaces.values()).filter(space => 
+    space.sectionIndex === playerSection.index && 
+    space.type === 'home'
+  );
+  
+  // Find the first home slot that's empty
+  return homeSlots.find(slot => slot.pegs.length === 0);
+};
+
+// Helper function to find the original home slot for a peg
+const findOriginalHomeSlot = (gameState: GameState, pegId: string): BoardSpace | undefined => {
+  // Parse the peg ID to get the player ID and peg number
+  const [playerId, pegNumberStr] = pegId.split('-peg-');
+  const pegNumber = parseInt(pegNumberStr);
+  
+  // Find the player's section
+  const playerSection = gameState.board.sections.find(section => 
+    section.playerIds?.includes(playerId)
+  );
+  
+  if (!playerSection) return undefined;
+  
+  // Find all home slots in the player's section, sorted by index
+  const homeSlots = Array.from(gameState.board.allSpaces.values())
+    .filter(space => 
+      space.sectionIndex === playerSection.index && 
+      space.type === 'home'
+    )
+    .sort((a, b) => a.index - b.index);
+  
+  // The peg's original slot is its number minus 1 (since peg numbers are 1-based but indices are 0-based)
+  const originalSlotIndex = pegNumber - 1;
+  
+  // Return the original slot if it exists
+  if (homeSlots[originalSlotIndex]) {
+    return homeSlots[originalSlotIndex];
+  }
+  
+  // If the original slot can't be found, fall back to any available slot
+  return homeSlots.find(slot => slot.pegs.length === 0);
+};
+
+// Helper function to handle joker bump
+const handleJokerBump = (gameState: GameState, bumpedPegId: string): BoardSpace | undefined => {
+  const [bumpedPlayerId] = bumpedPegId.split('-peg-');
+  return findAvailableHomeSlot(gameState, bumpedPlayerId);
+};
+
+// Special implementation for Nine - split movement
+const getNineMoves = (
+  gameState: GameState, 
+  player: Player, 
+  card: Card, 
+  direction: 'forward' | 'backward',
+  steps: number,
+  isSecondMove = false,
+  firstMovePegId?: string
+): Move[] => {
+  const moves: Move[] = [];
+  
+  // For each of the player's pegs
+  player.pegs.forEach(pegId => {
+    // If this is the second move and the peg is the same as the first move, skip it
+    if (isSecondMove && pegId === firstMovePegId) {
+      return;
+    }
+    
+    const pegSpace = findSpaceForPeg(gameState, pegId);
+    if (!pegSpace) {
+      return;
+    }
+    
+    // If peg is on a normal space, entrance, or corner
+    if (pegSpace.type === 'normal' || pegSpace.type === 'entrance' || pegSpace.type === 'corner') {
+      // Check for special slots
+      const isHomeEntrance = pegSpace.type === 'entrance' && pegSpace.index === 8;
+      const isCastleEntrance = pegSpace.type === 'entrance' && pegSpace.index === 3;
+      
+      // For second move with special handling, use a more direct approach
+      if (isSecondMove) {
+        // Get all spaces ordered by section and index for movement calculation
+        const allSpaces = Array.from(gameState.board.allSpaces.values())
+          .filter(s => s.type === 'normal' || s.type === 'entrance' || s.type === 'corner')
+          .sort((a, b) => {
+            // Sort by section first, then by index within section
+            if (a.sectionIndex !== b.sectionIndex) {
+              return a.sectionIndex! - b.sectionIndex!;
+            }
+            return a.index - b.index;
+          });
+      
+        // Find current space index in the ordered list
+        const currentSpaceIndex = allSpaces.findIndex(s => s.id === pegSpace.id);
+        
+        if (currentSpaceIndex === -1) {
+          return;
+        }
+        
+        // Calculate target space index based on direction
+        let targetSpaceIndex;
+        if (direction === 'forward') {
+          targetSpaceIndex = (currentSpaceIndex + steps) % allSpaces.length;
+        } else {
+          targetSpaceIndex = (currentSpaceIndex - steps + allSpaces.length) % allSpaces.length;
+        }
+        
+        const destinationSpace = allSpaces[targetSpaceIndex];
+        
+        if (!destinationSpace) {
+          return;
+        }
+        
+        // Check if destination has same color peg
+        const hasSameColorPeg = destinationSpace.pegs.some(existingPegId => {
+          const existingPlayerId = existingPegId.split('-peg-')[0];
+          return existingPlayerId === player.id;
+        });
+        
+        if (hasSameColorPeg) {
+          return;
+        }
+        
+        // Check if move would jump over own pegs
+        if (wouldJumpOverOwnPeg(gameState, player, pegSpace, destinationSpace, false)) {
+          return; // Skip this move if it would jump over own peg
+        }
+        
+        // Create the move
+        const move = {
+          playerId: player.id,
+          cardId: card.id,
+          pegId: pegId,
+          from: pegSpace.id,
+          destinations: [destinationSpace.id],
+          metadata: {
+            nineCardMove: {
+              direction,
+              steps,
+              isFirstMove: false
+            }
+          }
+        };
+        
+        moves.push(move);
+        
+        return;
+      }
+      
+      // For first move or non-special slots, use the original algorithm
+      let currentSectionIndex = pegSpace.sectionIndex;
+      let currentIndex = pegSpace.index;
+      let remainingSteps = steps;
+      
+      // Calculate final position
+      while (remainingSteps > 0) {
+        // Find max index in current section
+        const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
+          .filter(s => s.sectionIndex === currentSectionIndex && s.type === 'normal')
+          .map(s => s.index));
+        
+        if (direction === 'forward') {
+          // Moving forward
+          if (currentIndex + remainingSteps <= maxIndex) {
+            currentIndex += remainingSteps;
+            remainingSteps = 0;
+          } else {
+            // Move to next section
+            const stepsInCurrentSection = maxIndex - currentIndex;
+            remainingSteps -= (stepsInCurrentSection + 1);
+            currentSectionIndex = (currentSectionIndex + 1) % gameState.board.sections.length;
+            currentIndex = 0;
+          }
+        } else {
+          // Moving backward
+          if (currentIndex - remainingSteps >= 0) {
+            currentIndex -= remainingSteps;
+            remainingSteps = 0;
+          } else {
+            // Move to previous section
+            const stepsInCurrentSection = currentIndex;
+            remainingSteps -= (stepsInCurrentSection + 1); // Add +1 to account for crossing section boundary
+            currentSectionIndex = (currentSectionIndex - 1 + gameState.board.sections.length) % gameState.board.sections.length;
+            // Find max index in the new section
+            const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
+              .filter(s => s.sectionIndex === currentSectionIndex && s.type === 'normal')
+              .map(s => s.index));
+            currentIndex = maxIndex;
+          }
+        }
+      }
+      
+      // Find the destination space
+      const destinationSpace = Array.from(gameState.board.allSpaces.values()).find(s => 
+        s.sectionIndex === currentSectionIndex && 
+        (s.type === 'normal' || s.type === 'entrance') && 
+        s.index === currentIndex
+      );
+      
+      if (destinationSpace) {
+        // Check if destination has same color peg
+        const hasSameColorPeg = destinationSpace.pegs.some(existingPegId => {
+          const [existingPlayerId] = existingPegId.split('-peg-');
+          return existingPlayerId === player.id;
+        });
+        
+        if (!hasSameColorPeg) {
+          // Check if move would jump over own pegs
+          if (wouldJumpOverOwnPeg(gameState, player, pegSpace, destinationSpace, false)) {
+            return; // Skip this move if it would jump over own peg
+          }
+          
+          moves.push({
+            playerId: player.id,
+            cardId: card.id,
+            pegId: pegId,
+            from: pegSpace.id,
+            destinations: [destinationSpace.id],
+            metadata: {
+              nineCardMove: {
+                direction,
+                steps,
+                isFirstMove: !isSecondMove
+              }
+            }
+          });
+        }
+      }
+    }
+  });
+  
+  return moves;
+};
+
+// Special implementation for Seven - split movement
+const getSevenSplitMoves = (
+  gameState: GameState, 
+  player: Player, 
+  card: Card, 
+  steps: number,
+  isSecondMove = false,
+  firstMovePegId?: string
+): Move[] => {
+  const moves: Move[] = [];
+  
+  // For each of the player's pegs
+  player.pegs.forEach(pegId => {
+    // If this is the second move and the peg is the same as the first move, skip it
+    if (isSecondMove && pegId === firstMovePegId) {
+      return;
+    }
+    
+    const pegSpace = findSpaceForPeg(gameState, pegId);
+    if (!pegSpace) {
+      return;
+    }
+    
+    // If peg is on a normal space, entrance, or corner
+    if (pegSpace.type === 'normal' || pegSpace.type === 'entrance' || pegSpace.type === 'corner') {
+      let currentSectionIndex = pegSpace.sectionIndex;
+      let currentIndex = pegSpace.index;
+      let remainingSteps = steps;
+      
+      // Calculate final position after steps
+      while (remainingSteps > 0) {
+        // Find max index in current section
+        const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
+          .filter(s => s.sectionIndex === currentSectionIndex && s.type === 'normal')
+          .map(s => s.index));
+        
+        // If we can complete the move in current section
+        if (currentIndex + remainingSteps <= maxIndex) {
+          currentIndex += remainingSteps;
+          remainingSteps = 0;
+        } else {
+          // Move to next section
+          const stepsInCurrentSection = maxIndex - currentIndex;
+          remainingSteps -= (stepsInCurrentSection + 1);
+          currentSectionIndex = (currentSectionIndex + 1) % gameState.board.sections.length;
+          currentIndex = 0;
+        }
+      }
+      
+      // Find the destination space
+      const destinationSpace = Array.from(gameState.board.allSpaces.values()).find(s => 
+        s.sectionIndex === currentSectionIndex && 
+        (s.type === 'normal' || s.type === 'entrance') && 
+        s.index === currentIndex
+      );
+      
+      if (destinationSpace) {
+        // Check if destination has same color peg
+        const hasSameColorPeg = destinationSpace.pegs.some(existingPegId => {
+          const [existingPlayerId] = existingPegId.split('-peg-');
+          return existingPlayerId === player.id;
+        });
+        
+        if (!hasSameColorPeg) {
+          const move = {
+            playerId: player.id,
+            cardId: card.id,
+            pegId: pegId,
+            from: pegSpace.id,
+            destinations: [destinationSpace.id],
+            metadata: {
+              sevenCardMove: {
+                steps,
+                isFirstMove: !isSecondMove
+              }
+            }
+          };
+          
+          moves.push(move);
+        }
+      }
+    }
+  });
+  
+  return moves;
+};
+
+// Get all possible moves for a player with a given card
+export const getPossibleMoves = (
+  gameState: GameState,
+  playerId: string,
+  cardId: string,
+  options?: {
+    direction?: 'forward' | 'backward';
+    steps?: number;
+    isSecondMove?: boolean;
+    firstMovePegId?: string;
+  }
+): Move[] => {
+  const player = gameState.players.find(p => p.id === playerId);
+  const card = player?.hand.find(c => c.id === cardId);
+  
+  if (!player || !card) {
+    return [];
+  }
+  
+  const possibleMoves: Move[] = [];
+  
+  // Handle different card types and their movement rules
+  if (card.rank === 'joker') {
+    possibleMoves.push(...getJokerMoves(gameState, player, card));
+  } else if (card.rank === 'ace') {
+    possibleMoves.push(...getAceMoves(gameState, player, card));
+  } else if (card.isFace) {
+    possibleMoves.push(...getFaceCardMoves(gameState, player, card));
+  } else if (card.rank === '7') {
+    if (options?.steps && options.steps <= 7) {
+      // For split 7 card
+      possibleMoves.push(...getSevenSplitMoves(
+        gameState, 
+        player, 
+        card, 
+        options.steps,
+        options.isSecondMove || false,
+        options.isSecondMove ? options.firstMovePegId : undefined
+      ));
+    } else {
+      // Regular 7 card move
+      possibleMoves.push(...getRegularMoves(gameState, player, card));
+    }
+  } else if (card.rank === '8') {
+    possibleMoves.push(...getEightMoves(gameState, player, card));
+  } else if (card.rank === '9') {
+    // Special nine card handling
+    if (options?.direction && options?.steps) {
+      possibleMoves.push(...getNineMoves(
+        gameState, 
+        player, 
+        card, 
+        options.direction, 
+        options.steps,
+        options.isSecondMove || false,
+        options.isSecondMove ? options.firstMovePegId : undefined
+      ));
+    }
+  } else if (card.rank === '10') {
+    // Make sure 10 card is explicitly handled
+    possibleMoves.push(...getRegularMoves(gameState, player, card));
+  } else {
+    // Other regular numbered cards
+    possibleMoves.push(...getRegularMoves(gameState, player, card));
+  }
+  
+  return possibleMoves;
+};
+
+// Apply a move to the game state
+export const applyMove = (gameState: GameState, move: Move): { newState: GameState, bumpMessage?: string } => {
+  const newState = { ...gameState };
+  const player = newState.players.find(p => p.id === move.playerId);
+  
+  if (!player) {
+    console.log(`[applyMove] Player ${move.playerId} not found`);
+    return { newState: gameState };
+  }
+  
+  // Find the card that was played
+  const cardIndex = player.hand.findIndex(c => c.id === move.cardId);
+  if (cardIndex === -1) {
+    console.log(`[applyMove] Card ${move.cardId} not found in player's hand`);
+    return { newState: gameState };
+  }
+  
+  // Get the destination space
+  const destinationId = move.destinations[0];
+  const destinationSpace = newState.board.allSpaces.get(destinationId);
+  
+  if (!destinationSpace) {
+    console.log(`[applyMove] Destination space ${destinationId} not found`);
+    return { newState: newState };
+  }
+  
+  // Check if destination space already has a peg of the same color
+  const hasSameColorPeg = destinationSpace.pegs.some(pegId => {
+    const [pegPlayerId] = pegId.split('-peg-');
+    return pegPlayerId === move.playerId;
+  });
+  
+  if (hasSameColorPeg) {
+    console.log(`[applyMove] Destination space ${destinationId} already has a peg of the same color`);
+    return { newState: newState }; // Return without making any changes
+  }
+  
+  // Remove the card from the player's hand
+  const [playedCard] = player.hand.splice(cardIndex, 1);
+  console.log(`[applyMove] Player ${player.name} played ${playedCard.rank} of ${playedCard.suit}`);
+  
+  // Add the card to the discard pile
+  newState.discardPile.push(playedCard);
+  
+  // Find the current space for the peg
+  const fromSpace = findSpaceForPeg(newState, move.pegId);
+  
+  if (fromSpace) {
+    // Remove peg from its current space
+    fromSpace.pegs = fromSpace.pegs.filter(id => id !== move.pegId);
+    console.log(`[applyMove] Removing peg ${move.pegId} from space ${fromSpace.id}`);
+  } else {
+    // If peg not found in any space, search all spaces to be safe
+    console.log(`[applyMove] Could not find space for peg ${move.pegId}, scanning all spaces`);
+    newState.board.allSpaces.forEach(space => {
+      space.pegs = space.pegs.filter(id => id !== move.pegId);
+    });
+  }
+  
+  let bumpMessage: string | undefined;
+  
+  // Special handling for joker moves
+  if (playedCard.rank === 'joker' && move.metadata?.bumpedPegId && move.metadata?.bumpDestination) {
+    const bumpedPegId = move.metadata.bumpedPegId;
+    const bumpDestination = move.metadata.bumpDestination;
+    
+    console.log(`[applyMove] Joker Card: Bumping peg ${bumpedPegId} back to ${bumpDestination}`);
+    
+    // Get the bumped player info for the message
+    const [bumpedPlayerId] = bumpedPegId.split('-peg-');
+    const bumpedPlayer = newState.players.find(p => p.id === bumpedPlayerId);
+    
+    if (bumpedPlayer) {
+      console.log(`[applyMove] Bumping ${bumpedPlayer.name}'s peg (${bumpedPegId})`);
+    }
+    
+    // Remove the bumped peg from its current space
+    if (destinationSpace.pegs.includes(bumpedPegId)) {
+      console.log(`[applyMove] Removing bumped peg ${bumpedPegId} from space ${destinationId}`);
+      destinationSpace.pegs = destinationSpace.pegs.filter(id => id !== bumpedPegId);
+    } else {
+      console.log(`[applyMove] WARNING: Bumped peg ${bumpedPegId} not found in destination space ${destinationId}`);
+      console.log(`[applyMove] Destination space pegs: ${destinationSpace.pegs.join(', ')}`);
+    }
+    
+    // Find the home slot space
+    const homeSlot = newState.board.allSpaces.get(bumpDestination);
+    if (homeSlot) {
+      // Add the bumped peg to its home slot
+      homeSlot.pegs.push(bumpedPegId);
+      console.log(`[applyMove] Added bumped peg ${bumpedPegId} to home slot ${homeSlot.id}`);
+      
+      // Get player names for the message
+      const bumpedPlayer = newState.players.find(p => p.pegs.includes(bumpedPegId));
+      if (bumpedPlayer) {
+        bumpMessage = `${player.name} used a Joker to bump ${bumpedPlayer.name}'s peg back to their home!`;
+        console.log(`[applyMove] ${bumpMessage}`);
+      }
+    } else {
+      console.log(`[applyMove] ERROR: Could not find home slot ${bumpDestination} for bumped peg`);
+    }
+    
+    // Add the moving player's peg to the destination space
+    console.log(`[applyMove] Adding player's peg ${move.pegId} to space ${destinationId}`);
+    destinationSpace.pegs.push(move.pegId);
+  } else {
+    // Handle regular bumping for non-joker moves
+    if (destinationSpace.pegs.length > 0) {
+      const bumpResult = handleBump(newState, destinationSpace, player.id);
+      if (bumpResult) {
+        bumpMessage = `${bumpResult.bumpingPlayerName} bumped ${bumpResult.bumpedPlayerName}'s peg back to their home!`;
+      }
+    }
+    
+    // Add peg to its new space for non-joker moves
+    destinationSpace.pegs.push(move.pegId);
+    console.log(`[applyMove] Added peg ${move.pegId} to space ${destinationSpace.id}`);
+  }
+  
+  // Check if the player has moved all pegs to castle spaces
+  const allPegsInCastle = player.pegs.every(pegId => {
+    const pegSpace = findSpaceForPeg(newState, pegId);
+    return pegSpace?.type === 'castle';
+  });
+  
+  // Update player's completion status
+  player.isComplete = allPegsInCastle;
+  
+  // Draw a new card if there are cards in the draw pile
+  / Skip drawing a card if this is the first move of a split (7 card or 9 card)
+    const isFirstMoveOfMultiPartMove = move.metadata?.sevenCardMove?.isFirstMove || move.metadata?.nineCardMove?.isFirstMove;
+
+    if (newState.drawPile.length > 0 && !isFirstMoveOfMultiPartMove) {
+    const newCard = newState.drawPile.pop()!;
+    player.hand.push(newCard);
+    console.log(`[applyMove] Player ${player.name} drew a new card: ${newCard.rank} of ${newCard.suit}`);
+  } else {
+    console.log(`[applyMove] Draw pile is empty, no new card for player ${player.name}`);
+  }
+  
+  // Record the move
+  newState.moves.push(move);
+  
+  return { newState, bumpMessage };
+};
+
+// Helper functions for specific card movements
+const getJokerMoves = (gameState: GameState, player: Player, card: Card): Move[] => {
+  const moves: Move[] = [];
+  
+  // Log available pegs for debugging
+  console.log(`[getJokerMoves] Player ${player.name} (${player.id}) is checking joker moves`);
+  console.log(`[getJokerMoves] Player has ${player.pegs.length} pegs to potentially move`);
+  
+  // For each of the player's pegs (including those in home)
+  player.pegs.forEach(pegId => {
+    const pegSpace = findSpaceForPeg(gameState, pegId);
+    if (!pegSpace) {
+      console.log(`[getJokerMoves] Peg ${pegId} not found in any space`);
+      return;
+    }
+    
+    // Skip pegs in castle (they can't be moved)
+    if (pegSpace.type === 'castle') {
+      console.log(`[getJokerMoves] Peg ${pegId} is in castle, cannot be moved`);
+      return;
+    }
+    
+    console.log(`[getJokerMoves] Checking peg ${pegId} in space ${pegSpace.id} (${pegSpace.type})`);
+    
+    // Find all opponent pegs that can be bumped
+    let opponentPegsFound = 0;
+    let spacesWithOpponents: string[] = [];
+    
+    gameState.board.allSpaces.forEach((space, spaceId) => {
+      // Only allow bumping pegs on normal slots or entrance slots
+      if (space.type !== 'normal' && space.type !== 'entrance') {
+        return;
+      }
+      
+      // Skip if space is empty
+      if (space.pegs.length === 0) {
+        return;
+      }
+      
+      // Check each peg in the space for opponent's pegs
+      let foundOpponentInSpace = false;
+      
+      space.pegs.forEach(targetPegId => {
+        const [targetPlayerId] = targetPegId.split('-peg-');
+        
+        // Skip if it's the player's own peg
+        if (targetPlayerId === player.id) {
+          return;
+        }
+        
+        // If we've already found an opponent in this space, don't log it again
+        if (foundOpponentInSpace) return;
+        
+        foundOpponentInSpace = true;
+        opponentPegsFound++;
+        spacesWithOpponents.push(spaceId);
+        
+        // Check if there's an available home slot for the bumped peg
+        const homeSlot = handleJokerBump(gameState, targetPegId);
+        if (!homeSlot) {
+          console.log(`[getJokerMoves] No available home slot for ${targetPegId} at space ${spaceId}`);
+          return;
+        }
+        
+        // Get opponent's player name for better logs
+        const targetPlayer = gameState.players.find(p => p.id === targetPlayerId);
+        
+        // For joker moves, we allow jumping over own pegs as per the exception
+        // Add the move with both the destination and the bump information
+        console.log(`[getJokerMoves] Adding joker move: ${pegId} can bump ${targetPegId} (${targetPlayer?.name}) at space ${spaceId}`);
+        
+        moves.push({
+          playerId: player.id,
+          cardId: card.id,
+          pegId: pegId,
+          from: pegSpace.id,
+          destinations: [spaceId],
+          metadata: {
+            bumpedPegId: targetPegId,
+            bumpDestination: homeSlot.id
+          }
+        });
+      });
+    });
+    
+    console.log(`[getJokerMoves] Found ${opponentPegsFound} opponent pegs for peg ${pegId} in spaces: ${spacesWithOpponents.join(', ')}`);
+  });
+  
+  // Log detailed info about each generated move
+  console.log(`[getJokerMoves] Generated ${moves.length} possible joker moves total`);
+  if (moves.length > 0) {
+    moves.forEach((move, index) => {
+      console.log(`[getJokerMoves] Move ${index + 1}: peg ${move.pegId} from ${move.from} to ${move.destinations[0]}, bump peg ${move.metadata?.bumpedPegId} to ${move.metadata?.bumpDestination}`);
+    });
+  }
+  
+  return moves;
+};
+
+const getAceMoves = (gameState: GameState, player: Player, card: Card): Move[] => {
+  const moves: Move[] = [];
+  
+  // For each of the player's pegs
+  player.pegs.forEach(pegId => {
+    const pegSpace = findSpaceForPeg(gameState, pegId);
+    if (!pegSpace) return;
+    
+    // If peg is in home space, can move to slot 8
+    if (pegSpace.type === 'home') {
+      // Find the section for this player
+      const playerSection = gameState.board.sections.find(section => 
+        section.playerIds?.includes(player.id)
+      );
+      
+      if (playerSection) {
+        // Check if slot 8 is blocked
+        if (isSlot8Blocked(gameState, playerSection)) {
+          return;
+        }
+
+        // Find slot 8 in the player's section
+        const slot8Space = Array.from(gameState.board.allSpaces.values()).find(s => {
+          const isCorrectSection = s.id.startsWith(playerSection.id);
+          const isValidSpace = s.type === 'normal' || s.type === 'entrance';
+          const isSlot8 = s.index === 8;
+          return isCorrectSection && isValidSpace && isSlot8;
+        });
+        
+        if (slot8Space) {
+          moves.push({
+            playerId: player.id,
+            cardId: card.id,
+            pegId: pegId,
+            from: pegSpace.id,
+            destinations: [slot8Space.id]
+          });
+        }
+      }
+    }
+    // If peg is on slot 0, can jump to next section's slot 0 (corner to corner)
+    else if ((pegSpace.type === 'normal' || pegSpace.type === 'entrance') && pegSpace.index === 0) {
+      // Find next section's slot 0
+      const nextSectionIndex = (pegSpace.sectionIndex + 1) % gameState.board.sections.length;
+      const cornerSpace = Array.from(gameState.board.allSpaces.values()).find(s => 
+        s.sectionIndex === nextSectionIndex && 
+        (s.type === 'normal' || s.type === 'entrance') && 
+        s.index === 0
+      );
+      
+      if (cornerSpace) {
+        // Check if destination has same color peg
+        const hasSameColorPeg = cornerSpace.pegs.some(existingPegId => {
+          const [existingPlayerId] = existingPegId.split('-peg-');
+          return existingPlayerId === player.id;
+        });
+        
+        if (!hasSameColorPeg) {
+          moves.push({
+            playerId: player.id,
+            cardId: card.id,
+            pegId: pegId,
+            from: pegSpace.id,
+            destinations: [cornerSpace.id]
+          });
+        }
+      }
+    }
+    // If peg is on a normal space or entrance, move 1 space forward
+    else if (pegSpace.type === 'normal' || pegSpace.type === 'entrance') {
+      let currentSectionIndex = pegSpace.sectionIndex;
+      let currentIndex = pegSpace.index;
+      
+      // Find max index in current section
+      const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
+        .filter(s => s.sectionIndex === currentSectionIndex && s.type === 'normal')
+        .map(s => s.index));
+      
+      // If at end of section, move to next section's slot 0
+      if (currentIndex === maxIndex) {
+        currentSectionIndex = (currentSectionIndex + 1) % gameState.board.sections.length;
+        currentIndex = 0;
+      } else {
+        // Move forward one space
+        currentIndex++;
+      }
+      
+      // Find the destination space
+      const destinationSpace = Array.from(gameState.board.allSpaces.values()).find(s => 
+        s.sectionIndex === currentSectionIndex && 
+        (s.type === 'normal' || s.type === 'entrance') && 
+        s.index === currentIndex
+      );
+      
+      if (destinationSpace) {
+        // Check if destination has same color peg
+        const hasSameColorPeg = destinationSpace.pegs.some(existingPegId => {
+          const [existingPlayerId] = existingPegId.split('-peg-');
+          return existingPlayerId === player.id;
+        });
+        
+        if (!hasSameColorPeg) {
+          moves.push({
+            playerId: player.id,
+            cardId: card.id,
+            pegId: pegId,
+            from: pegSpace.id,
+            destinations: [destinationSpace.id]
+          });
+        }
+      }
+    }
+  });
+  
+  return moves;
+};
+
+const getFaceCardMoves = (gameState: GameState, player: Player, card: Card): Move[] => {
+  const moves: Move[] = [];
+  
+  // For each of the player's pegs
+  player.pegs.forEach(pegId => {
+    const pegSpace = findSpaceForPeg(gameState, pegId);
+    if (!pegSpace) return;
+    
+    // If peg is in home space, can move to slot 8
+    if (pegSpace.type === 'home') {
+      // Find the section for this player
+      const playerSection = gameState.board.sections.find(section => 
+        section.playerIds?.includes(player.id)
+      );
+      
+      if (playerSection) {
+        // Check if slot 8 is blocked
+        if (isSlot8Blocked(gameState, playerSection)) {
+          return;
+        }
+
+        // Find slot 8 in the player's section
+        const slot8Space = Array.from(gameState.board.allSpaces.values()).find(s => {
+          const isCorrectSection = s.id.startsWith(playerSection.id);
+          const isValidSpace = s.type === 'normal' || s.type === 'entrance';
+          const isSlot8 = s.index === 8;
+          return isCorrectSection && isValidSpace && isSlot8;
+        });
+        
+        if (slot8Space) {
+          moves.push({
+            playerId: player.id,
+            cardId: card.id,
+            pegId: pegId,
+            from: pegSpace.id,
+            destinations: [slot8Space.id]
+          });
+        }
+      }
+    }
+    // If peg is on a normal space or entrance, move 10 spaces forward
+    else if (pegSpace.type === 'normal' || pegSpace.type === 'entrance') {
+      let currentSectionIndex = pegSpace.sectionIndex;
+      let currentIndex = pegSpace.index;
+      let remainingSteps = 10;
+      
+      // Calculate final position after 10 steps
+      while (remainingSteps > 0) {
+        // Find max index in current section
+        const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
+          .filter(s => s.sectionIndex === currentSectionIndex && s.type === 'normal')
+          .map(s => s.index));
+        
+        // If we can complete the move in current section
+        if (currentIndex + remainingSteps <= maxIndex) {
+          currentIndex += remainingSteps;
+          remainingSteps = 0;
+        } else {
+          // Move to next section
+          const stepsInCurrentSection = maxIndex - currentIndex;
+          remainingSteps -= (stepsInCurrentSection + 1);
+          currentSectionIndex = (currentSectionIndex + 1) % gameState.board.sections.length;
+          currentIndex = 0;
+        }
+      }
+      
+      // Find the destination space
+      const destinationSpace = Array.from(gameState.board.allSpaces.values()).find(s => 
+        s.sectionIndex === currentSectionIndex && 
+        (s.type === 'normal' || s.type === 'entrance') && 
+        s.index === currentIndex
+      );
+      
+      if (destinationSpace) {
+        // Check if destination has same color peg
+        const hasSameColorPeg = destinationSpace.pegs.some(existingPegId => {
+          const [existingPlayerId] = existingPegId.split('-peg-');
+          return existingPlayerId === player.id;
+        });
+        
+        if (!hasSameColorPeg) {
+          // Check if move would jump over own pegs
+          if (wouldJumpOverOwnPeg(gameState, player, pegSpace, destinationSpace, false)) {
+            return; // Skip this move if it would jump over own peg
+          }
+          
+          moves.push({
+            playerId: player.id,
+            cardId: card.id,
+            pegId: pegId,
+            from: pegSpace.id,
+            destinations: [destinationSpace.id]
+          });
+        }
+      }
+    }
+  });
+  
+  return moves;
+};
+
+// Regular number cards (2, 3, 4, 5, 6, 10)
+const getRegularMoves = (gameState: GameState, player: Player, card: Card): Move[] => {
+  const moves: Move[] = [];
+  
+  // For each of the player's pegs
+  player.pegs.forEach(pegId => {
+    const pegSpace = findSpaceForPeg(gameState, pegId);
+    if (!pegSpace) return;
+    
+    // Cannot move pegs from home slots with regular number cards
+    if (pegSpace.type === 'home') {
+      return;
+    }
+    
+    let remainingSteps = card.value;
+    let currentIndex = pegSpace.index;
+    let currentSectionIndex = pegSpace.sectionIndex;
+    
+    // Calculate final position after movement
+    while (remainingSteps > 0) {
+      // Find max index in current section
+      const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
+        .filter(s => s.sectionIndex === currentSectionIndex && s.type === 'normal')
+        .map(s => s.index));
+      
+      // If we can complete the move in current section
+      if (currentIndex + remainingSteps <= maxIndex) {
+        currentIndex += remainingSteps;
+        remainingSteps = 0;
+      } else {
+        // Move to next section
+        const stepsInCurrentSection = maxIndex - currentIndex;
+        remainingSteps -= (stepsInCurrentSection + 1);
+        currentSectionIndex = (currentSectionIndex + 1) % gameState.board.sections.length;
+        currentIndex = 0;
+      }
+    }
+    
+    // Find the destination space
+    const destinationSpace = Array.from(gameState.board.allSpaces.values()).find(s => 
+      s.sectionIndex === currentSectionIndex && 
+      s.type === 'normal' && 
+      s.index === currentIndex
+    );
+    
+    if (destinationSpace) {
+      // Check if the destination space already has a peg of the same color
+      const hasSameColorPeg = destinationSpace.pegs.some(existingPegId => {
+        const [existingPlayerId] = existingPegId.split('-peg-');
+        return existingPlayerId === player.id;
+      });
+      
+      if (hasSameColorPeg) {
+        return; // Skip this move
+      }
+      
+      // Check if move would jump over own pegs
+      if (wouldJumpOverOwnPeg(gameState, player, pegSpace, destinationSpace, false)) {
+        return; // Skip this move if it would jump over own peg
+      }
+      
+      moves.push({
+        playerId: player.id,
+        cardId: card.id,
+        pegId: pegId,
+        from: pegSpace.id,
+        destinations: [destinationSpace.id]
+      });
+    }
+  });
+  
+  return moves;
+};
+
+// Special implementation for Eight - reverse movement
+const getEightMoves = (gameState: GameState, player: Player, card: Card): Move[] => {
+  const moves: Move[] = [];
+  
+  // For each of the player's pegs
+  player.pegs.forEach(pegId => {
+    const pegSpace = findSpaceForPeg(gameState, pegId);
+    if (!pegSpace) return;
+    
+    // Cannot move pegs from castle
+    if (pegSpace.type === 'castle') {
+      return;
+    }
+    
+    // If peg is on a normal space or entrance, move backwards by 8
+    if (pegSpace.type === 'normal' || pegSpace.type === 'entrance') {
+      let remainingSteps = 8;
+      let currentIndex = pegSpace.index;
+      let currentSectionIndex = pegSpace.sectionIndex;
+      
+      // Calculate final position after backward movement
+      while (remainingSteps > 0) {
+        // If we can complete the move in current section
+        if (currentIndex - remainingSteps >= 0) {
+          currentIndex -= remainingSteps;
+          remainingSteps = 0;
+        } else {
+          // Move to previous section
+          const stepsInCurrentSection = currentIndex + 1; // +1 because we count the move to previous section
+          remainingSteps -= stepsInCurrentSection;
+          currentSectionIndex = (currentSectionIndex - 1 + gameState.board.sections.length) % gameState.board.sections.length;
+          
+          // Find max index in the new section
+          const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
+            .filter(s => s.sectionIndex === currentSectionIndex && s.type === 'normal')
+            .map(s => s.index));
+          
+          currentIndex = maxIndex;
+        }
+      }
+      
+      // Find the destination space
+      const destinationSpace = Array.from(gameState.board.allSpaces.values()).find(s => 
+        s.sectionIndex === currentSectionIndex && 
+        (s.type === 'normal' || s.type === 'entrance') && 
+        s.index === currentIndex
+      );
+      
+      if (destinationSpace) {
+        // Check if destination has same color peg
+        const hasSameColorPeg = destinationSpace.pegs.some(existingPegId => {
+          const [existingPlayerId] = existingPegId.split('-peg-');
+          return existingPlayerId === player.id;
+        });
+        
+        if (!hasSameColorPeg) {
+          // Check if move would jump over own pegs
+          if (wouldJumpOverOwnPeg(gameState, player, pegSpace, destinationSpace, false)) {
+            return; // Skip this move if it would jump over own peg
+          }
+          
+          moves.push({
+            playerId: player.id,
+            cardId: card.id,
+            pegId: pegId,
+            from: pegSpace.id,
+            destinations: [destinationSpace.id]
+          });
+        }
+      }
+    }
+  });
+  
+  return moves;
+};
+
+// Handle bumping pegs
+const handleBump = (gameState: GameState, space: BoardSpace, playerId: string): { bumpedPegId: string, bumpDestination: string, bumpingPlayerName: string, bumpedPlayerName: string } | undefined => {
+  // Make a copy of the pegs array to avoid modifying while iterating
+  const pegsToProcess = [...space.pegs];
+  
+  // For each peg in the space
+  for (const pegId of pegsToProcess) {
+    // Only process pegs that belong to other players
+    const [pegPlayerId] = pegId.split('-peg-');
+    if (pegPlayerId === playerId) continue; // Skip own pegs
+    
+    const pegPlayer = gameState.players.find(p => p.id === pegPlayerId);
+    const bumpingPlayer = gameState.players.find(p => p.id === playerId);
+    if (!pegPlayer || !bumpingPlayer) continue; // Players not found
+    
+    // Find an available home slot for the bumped peg
+    const homeSlot = findAvailableHomeSlot(gameState, pegPlayerId);
+    if (!homeSlot) {
+      return undefined;
+    }
+    
+    // Remove peg from current space
+    space.pegs = space.pegs.filter(id => id !== pegId);
+    
+    // Add peg to home slot
+    homeSlot.pegs.push(pegId);
+    
+    // Return bump information
+    return {
+      bumpedPegId: pegId,
+      bumpDestination: homeSlot.id,
+      bumpingPlayerName: bumpingPlayer.name,
+      bumpedPlayerName: pegPlayer.name
+    };
+  }
+  
+  return undefined;
+}; 

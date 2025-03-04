@@ -1,0 +1,84 @@
+.player-panel {
+  width: 200px;
+  border-radius: 8px;
+  border: 3px solid #ccc;
+  margin: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  background-color: white;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.player-panel.current-player {
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.player-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  color: white;
+  font-weight: bold;
+}
+
+.player-name {
+  font-size: 1.1rem;
+}
+
+.player-team {
+  padding: 2px 6px;
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  font-size: 0.8rem;
+}
+
+.player-stats {
+  padding: 12px;
+}
+
+.player-stat {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.stat-label {
+  font-weight: bold;
+  color: #555;
+}
+
+.stat-value {
+  font-weight: bold;
+}
+
+.progress-bar-container {
+  height: 8px;
+  background-color: #eee;
+  border-radius: 4px;
+  margin: 12px 0;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  transition: width 0.5s;
+}
+
+.peg-status {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 10px;
+}
+
+.peg-indicator {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  transition: transform 0.3s, background-color 0.3s;
+}
+
+.peg-indicator.peg-home {
+  transform: scale(1.2);
+} 
