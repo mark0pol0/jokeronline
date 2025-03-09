@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
 import GameController from './components/Game/GameController';
 import HomeMenu from './components/HomeMenu/HomeMenu';
 import SetupScreen from './components/SetupScreen/SetupScreen';
+import OnlineMenu from './components/Multiplayer/OnlineMenu';
+import MultiplayerGameController from './components/Multiplayer/MultiplayerGameController';
+import { useMultiplayer } from './context/MultiplayerContext';
 
 // Available colors for player selection
 const PLAYER_COLORS = [
@@ -16,20 +19,35 @@ const PLAYER_COLORS = [
   { name: 'Orange', value: '#FF8C33' }
 ];
 
-type GamePhase = 'home' | 'setup' | 'playing';
+type GamePhase = 'home' | 'setup' | 'playing' | 'online' | 'online-playing';
 
+// Main App component
 const App: React.FC = () => {
+  // Get multiplayer state
+  const { isGameStarted, isOnlineMode } = useMultiplayer();
+  
+  // State
   const [gamePhase, setGamePhase] = useState<GamePhase>('home');
-  const [playerNames, setPlayerNames] = useState<string[]>(['Player 1', 'Player 2']);
-  const [playerTeams, setPlayerTeams] = useState<Record<string, number>>({
-    'player-1': 0,
-    'player-2': 1
-  });
+  const [onlineMode, setOnlineMode] = useState(false);
+  const [playerNames, setPlayerNames] = useState(['Player 1', 'Player 2']);
+  const [playerIds] = useState(['player-1', 'player-2']);
   const [playerColors, setPlayerColors] = useState<Record<string, string>>({
-    'player-1': PLAYER_COLORS[0].value,
-    'player-2': PLAYER_COLORS[1].value
+    'player-1': PLAYER_COLORS[0].value, // Red for first player
+    'player-2': PLAYER_COLORS[1].value  // Blue for second player
   });
-  const [teamMode, setTeamMode] = useState<boolean>(false);
+  const [teamMode, setTeamMode] = useState(false);
+  const [playerTeams, setPlayerTeams] = useState<Record<string, number>>({
+    'player-1': 1,
+    'player-2': 2
+  });
+
+  // Effect to transition to multiplayer game when the game is started
+  useEffect(() => {
+    if (isOnlineMode && isGameStarted && gamePhase !== 'online-playing') {
+      console.log('Game started in multiplayer mode, transitioning to game screen');
+      setGamePhase('online-playing');
+    }
+  }, [isOnlineMode, isGameStarted, gamePhase]);
 
   const addPlayer = () => {
     if (playerNames.length < 8) {
@@ -40,9 +58,11 @@ const App: React.FC = () => {
         ...playerTeams,
         [playerId]: newPlayerIndex % 2 // Alternate teams
       });
+      
+      // Assign colors in sequence: Red, Blue, Green, Purple, Yellow, Pink, Cyan, Orange
       setPlayerColors({
         ...playerColors,
-        [playerId]: PLAYER_COLORS[newPlayerIndex % PLAYER_COLORS.length].value
+        [playerId]: PLAYER_COLORS[newPlayerIndex - 1].value
       });
     }
   };
@@ -88,10 +108,23 @@ const App: React.FC = () => {
     setTeamMode(!teamMode);
   };
 
+  const handleStartOnlineGame = () => {
+    setOnlineMode(true);
+    setGamePhase('online');
+  };
+
+  const handleReturnToHome = () => {
+    setGamePhase('home');
+    setOnlineMode(false);
+  };
+
   return (
     <div className="App">
       {gamePhase === 'home' && (
-        <HomeMenu onStartGame={() => setGamePhase('setup')} />
+        <HomeMenu 
+          onStartGame={() => setGamePhase('setup')} 
+          onStartOnlineGame={handleStartOnlineGame}
+        />
       )}
       {gamePhase === 'setup' && (
         <SetupScreen
@@ -116,6 +149,12 @@ const App: React.FC = () => {
           playerColors={playerColors}
           numBoardSections={playerNames.length}
         />
+      )}
+      {gamePhase === 'online' && (
+        <OnlineMenu onBack={handleReturnToHome} />
+      )}
+      {gamePhase === 'online-playing' && (
+        <MultiplayerGameController onBack={handleReturnToHome} />
       )}
     </div>
   );

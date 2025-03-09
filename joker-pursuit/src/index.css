@@ -4,6 +4,12 @@ html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
+  position: fixed;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 body {
@@ -14,6 +20,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: #f0f0f0;
   color: #333;
+  overscroll-behavior: none;
 }
 
 code {

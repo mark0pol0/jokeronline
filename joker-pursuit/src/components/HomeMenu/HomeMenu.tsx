@@ -13,9 +13,10 @@ interface FloatingElement {
 
 interface HomeMenuProps {
   onStartGame: () => void;
+  onStartOnlineGame: () => void;
 }
 
-const HomeMenu: React.FC<HomeMenuProps> = ({ onStartGame }) => {
+const HomeMenu: React.FC<HomeMenuProps> = ({ onStartGame, onStartOnlineGame }) => {
   const [floatingElements, setFloatingElements] = useState<FloatingElement[]>([]);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
 
@@ -74,7 +75,12 @@ const HomeMenu: React.FC<HomeMenuProps> = ({ onStartGame }) => {
         
         <div className="button-container">
           <button className="skeuomorphic-button primary-button" onClick={onStartGame}>
-            <span className="button-text">Setup & Start Game</span>
+            <span className="button-text">Local Game</span>
+            <div className="button-shine"></div>
+          </button>
+          
+          <button className="skeuomorphic-button primary-button" onClick={onStartOnlineGame}>
+            <span className="button-text">Play Online</span>
             <div className="button-shine"></div>
           </button>
           

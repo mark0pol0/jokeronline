@@ -4,10 +4,27 @@ import { GameState, Move } from '../models/GameState';
 import { Player } from '../models/Player';
 import { BoardSection } from '../models/BoardModel';
 
+// Helper function to safely get all spaces as an array
+export const getAllSpacesAsArray = (gameState: GameState): BoardSpace[] => {
+  // Defensive check to ensure board and spaces exist
+  if (!gameState || !gameState.board || !gameState.board.allSpaces) {
+    console.warn('Game state, board, or allSpaces is undefined in getAllSpacesAsArray');
+    return [];
+  }
+
+  if (gameState.board.allSpaces instanceof Map) {
+    // If it's a Map (client-side generated)
+    return Array.from(gameState.board.allSpaces.values());
+  } else {
+    // If it's a plain object (from server JSON)
+    return Object.values(gameState.board.allSpaces);
+  }
+};
+
 // Helper function to find the space containing a specific peg
 export const findSpaceForPeg = (gameState: GameState, pegId: string): BoardSpace | undefined => {
-  // Use Array.from() to convert Map values to an array before iterating
-  const allSpaces = Array.from(gameState.board.allSpaces.values());
+  const allSpaces = getAllSpacesAsArray(gameState);
+  
   for (const space of allSpaces) {
     if (space.pegs.includes(pegId)) {
       return space;
@@ -30,7 +47,7 @@ const wouldJumpOverOwnPeg = (
   }
 
   // Get ordered spaces for board traversal - with sections in order
-  const orderedSpaces = Array.from(gameState.board.allSpaces.values())
+  const orderedSpaces = getAllSpacesAsArray(gameState)
     .filter(s => s.type === 'normal' || s.type === 'entrance' || s.type === 'corner')
     .sort((a, b) => {
       // Sort by section first, then by index within section
@@ -117,7 +134,7 @@ const wouldJumpOverOwnPeg = (
 
 // Helper function to check if slot 8 is blocked
 const isSlot8Blocked = (gameState: GameState, playerSection: BoardSection): boolean => {
-  const slot8Space = Array.from(gameState.board.allSpaces.values()).find(s => {
+  const slot8Space = getAllSpacesAsArray(gameState).find(s => {
     const isCorrectSection = s.id.startsWith(playerSection.id);
     const isValidSpace = s.type === 'normal' || s.type === 'entrance';
     const isSlot8 = s.index === 8;
@@ -1126,63 +1143,113 @@ const getSevenSplitMoves = (
               console.log(`[getSevenSplitMoves] Player has peg at ${s.id} (section ${s.sectionIndex}, index ${s.index})`);
             });
           
-          // Check if the move would pass the castle entrance and the peg is before the entrance
-          if (willPassCastleEntrance && pegSpace.sectionIndex === playerSection?.index && pegSpace.index < 3) {
-            console.log(`[getSevenSplitMoves] Normal move is blocked, but considering castle entry as alternative`);
+          // Check if the move would pass the castle entrance
+          if (willPassCastleEntrance && playerSection) {
+            console.log(`[getSevenSplitMoves] Normal move is blocked, but considering castle entry as alternative because will pass castle entrance`);
             
             // Calculate castle entry steps
-            // We need to determine how many steps remain after reaching the castle entrance
-            const stepsToEntrance = 3 - pegSpace.index;
-            const remainingStepsForCastle = steps - stepsToEntrance;
+            let castleSteps = steps;
             
-            if (remainingStepsForCastle > 0) {
-              // Castle index is 0-based, so subtract 1 from steps
-              const castleIndex = remainingStepsForCastle - 1;
+            // If we're in player's section and before castle entrance
+            if (pegSpace.sectionIndex === playerSection.index && pegSpace.index < 3) {
+              const stepsToEntrance = 3 - pegSpace.index;
+              castleSteps -= stepsToEntrance;
+              console.log(`[getSevenSplitMoves] In player's section: steps to castle entrance=${stepsToEntrance}, remaining castle steps=${castleSteps}`);
+            } 
+            // If we're in a different section (cross-section movement)
+            else if (pegSpace.sectionIndex !== playerSection.index) {
+              console.log(`[getSevenSplitMoves] Cross-section movement: calculating castle entry steps`);
+              // Calculate steps to reach player's section
+              let stepsToPlayerSection = 0;
+              let sectionIndex = pegSpace.sectionIndex;
+              let indexInSection = pegSpace.index;
+              let tempSteps = steps;
               
-              // Check if this castle index is valid (0-4)
-              if (castleIndex >= 0 && castleIndex <= 4) {
-                console.log(`[getSevenSplitMoves] Calculating castle entry to index ${castleIndex} with ${remainingStepsForCastle} remaining steps`);
+              while (sectionIndex !== playerSection.index && tempSteps > 0) {
+                // Get max index in current section
+                const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
+                  .filter(s => s.sectionIndex === sectionIndex && s.type === 'normal')
+                  .map(s => s.index));
                 
-                // Find the castle space
-                const castleSpace = Array.from(gameState.board.allSpaces.values()).find(s => 
-                  s.sectionIndex === playerSection?.index && 
-                  s.type === 'castle' && 
-                  s.index === castleIndex
-                );
+                // Calculate steps needed to exit this section
+                const stepsToNextSection = (maxIndex - indexInSection) + 1;
                 
-                if (castleSpace) {
-                  // Check if there's already a peg in this castle space
-                  const hasCastlePeg = castleSpace.pegs.some(existingPegId => {
-                    const [existingPlayerId] = existingPegId.split('-peg-');
-                    return existingPlayerId === player.id;
-                  });
+                if (tempSteps > stepsToNextSection) {
+                  // Move to next section
+                  tempSteps -= stepsToNextSection;
+                  sectionIndex = (sectionIndex + 1) % gameState.board.sections.length;
+                  indexInSection = 0;
                   
-                  if (!hasCastlePeg) {
-                    console.log(`[getSevenSplitMoves] Added castle entry move as alternative from ${pegSpace.id} to ${castleSpace.id}`);
-                    
-                    // Add castle entry move as an alternative
-                    moves.push({
-                      playerId: player.id,
-                      cardId: card.id,
-                      pegId: pegId,
-                      from: pegSpace.id,
-                      destinations: [castleSpace.id],
-                      metadata: {
-                        castleEntry: true,
-                        castleMovement: true,
-                        willPassCastleEntrance: true,
-                        sevenCardMove: {
-                          steps,
-                          isFirstMove: !isSecondMove
-                        }
-                      }
-                    });
-                  } else {
-                    console.log(`[getSevenSplitMoves] Castle space ${castleSpace.id} already has a peg, cannot enter`);
+                  // If we've reached player's section
+                  if (sectionIndex === playerSection.index) {
+                    // Calculate remaining steps after reaching player's section
+                    if (tempSteps > 3) { // If we have more than 3 steps after entering player's section
+                      castleSteps = tempSteps - 3; // Steps after passing castle entrance
+                      console.log(`[getSevenSplitMoves] Cross-section: would reach castle entrance with ${castleSteps} steps remaining`);
+                    } else {
+                      // Not enough steps to reach castle after entering player's section
+                      castleSteps = 1; // Default to first castle position
+                      console.log(`[getSevenSplitMoves] Cross-section: not enough steps to reach castle entrance, using default`);
+                    }
+                    break;
                   }
+                } else {
+                  // Not enough steps to reach next section
+                  console.log(`[getSevenSplitMoves] Cross-section: not enough steps to reach player's section`);
+                  castleSteps = 1; // Default to first castle position
+                  break;
                 }
               }
             }
+            
+            // Castle has positions 0-4, so limit to that range
+            castleSteps = Math.min(castleSteps, 5);
+            castleSteps = Math.max(castleSteps, 1); // Ensure we have at least 1 step
+            
+            if (castleSteps > 0) {
+              const castleIndex = castleSteps - 1; // Convert steps to 0-based index
+              console.log(`[getSevenSplitMoves] Castle entry calculation: castleSteps=${castleSteps}, resulting castleIndex=${castleIndex}`);
+              
+              // Find the castle destination space
+              const castleDestinationSpace = Array.from(gameState.board.allSpaces.values()).find(s => 
+                s.sectionIndex === playerSection.index && 
+                s.type === 'castle' && 
+                s.index === castleIndex
+              );
+              
+              if (castleDestinationSpace) {
+                // Check if this castle space already has a peg of the same color
+                const hasCastlePeg = castleDestinationSpace.pegs.some(existingPegId => {
+                  const [existingPlayerId] = existingPegId.split('-peg-');
+                  return existingPlayerId === player.id;
+                });
+                
+                if (!hasCastlePeg) {
+                  console.log(`[getSevenSplitMoves] Adding castle entry move from ${pegSpace.id} to ${castleDestinationSpace.id}`);
+                  
+                  moves.push({
+                    playerId: player.id,
+                    cardId: card.id,
+                    pegId: pegId,
+                    from: pegSpace.id,
+                    destinations: [castleDestinationSpace.id],
+                    metadata: {
+                      castleEntry: true,
+                      castleMovement: true,
+                      willPassCastleEntrance: true,
+                      sevenCardMove: {
+                        steps,
+                        isFirstMove: !isSecondMove
+                      }
+                    }
+                  });
+                } else {
+                  console.log(`[getSevenSplitMoves] Castle destination already has a peg, skipping castle entry`);
+                }
+              }
+            }
+          } else {
+            console.log(`[getSevenSplitMoves] Move does not pass castle entrance, no castle entry option needed`);
           }
           
           return; // Skip the normal path move if it jumps over own peg

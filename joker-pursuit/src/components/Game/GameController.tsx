@@ -14,13 +14,20 @@ interface GameControllerProps {
   playerTeams: Record<string, number>;
   numBoardSections: number;
   playerColors: Record<string, string>;
+  
+  // Multiplayer props
+  isMultiplayer?: boolean;
+  isCurrentPlayerTurn?: boolean;
+  onMove?: (moveData: any) => void;
+  onUpdateGameState?: (gameState: GameState) => void;
+  gameStateOverride?: GameState;
 }
 
 // Add new interface for nine card state
 interface NineCardState {
   direction?: 'forward' | 'backward';  // Explicitly typed as union
   steps?: number;
-  state: 'INITIAL' | 'DIRECTION_SELECTED' | 'STEPS_CHOSEN' | 'FIRST_MOVE_COMPLETE' | 'SECOND_MOVE_READY' | 'NO_VALID_SECOND_MOVES';
+  state: 'INITIAL' | 'DIRECTION_SELECTED' | 'STEPS_CHOSEN' | 'FIRST_MOVE_COMPLETE' | 'SECOND_MOVE_READY' | 'NO_VALID_SECOND_MOVES' | 'SPLIT_SELECT_STEPS';
   firstMoveComplete: boolean;
   firstMovePegId?: string;
   remainingSteps?: number;
@@ -127,10 +134,46 @@ const GameController: React.FC<GameControllerProps> = ({
   playerNames, 
   playerTeams,
   numBoardSections,
-  playerColors 
+  playerColors,
+  
+  // Multiplayer props
+  isMultiplayer,
+  isCurrentPlayerTurn,
+  onMove,
+  onUpdateGameState,
+  gameStateOverride
 }) => {
   // Initialize game state
   const [gameState, setGameState] = useState<GameState>(() => {
+    // If a game state override is provided (in multiplayer mode), use it
+    if (gameStateOverride) {
+      console.log("[GameController] Using gameStateOverride - board exists:", !!gameStateOverride.board);
+      
+      // Add debugging for board dimensions
+      if (gameStateOverride.board) {
+        // Log information about sections and spaces
+        const sectionCount = gameStateOverride.board.sections?.length || 0;
+        const spaceCount = gameStateOverride.board.allSpaces instanceof Map 
+          ? gameStateOverride.board.allSpaces.size 
+          : Object.keys(gameStateOverride.board.allSpaces).length;
+        
+        console.log(`[GameController] Board has ${sectionCount} sections and ${spaceCount} spaces`);
+        
+        // Log information about pegs
+        if (gameStateOverride.players) {
+          const totalPegs = gameStateOverride.players.reduce((total, player) => 
+            total + (player.pegs?.length || 0), 0);
+          console.log(`[GameController] Game has ${gameStateOverride.players.length} players with ${totalPegs} total pegs`);
+        }
+      }
+      
+      return gameStateOverride;
+    }
+    
+    // Otherwise create a new initial game state
+    console.log("[GameController] Creating new initial game state");
+    // Log the player colors
+    console.log("[GameController] Player colors:", playerColors);
     const initialState = createInitialGameState(playerNames, playerTeams, numBoardSections, playerColors);
     return initialState;
   });
@@ -140,35 +183,227 @@ const GameController: React.FC<GameControllerProps> = ({
   const [movePegsMode, setMovePegsMode] = useState(false);
   const [preservePlayMode, setPreservePlayMode] = useState(false);
   
-  // Calculate initial zoom level based on viewport size
-  const calculateInitialZoom = () => {
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const boardSize = 1400; // This is our board's base size
+  // Add state for showing cards (for pass-and-play)
+  const [showCards, setShowCards] = useState(false);
+  
+  // Calculate responsive scaling factor based on viewport size - simplified approach
+  const calculateResponsiveScale = () => {
+    // Get precise viewport dimensions
+    const viewportWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+    const viewportHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
     
-    // Calculate zoom ratios for both dimensions
-    const widthRatio = (viewportWidth * 0.9) / boardSize;
-    const heightRatio = (viewportHeight * 0.8) / boardSize;
+    // Fixed base size for better consistency
+    const boardSize = 1200;
     
-    // Use the smaller ratio to ensure board fits in both dimensions
-    const initialZoom = Math.min(widthRatio, heightRatio);
+    // Calculate ratio based on the smaller dimension to ensure it fits
+    const ratio = Math.min(viewportWidth / boardSize, viewportHeight / boardSize);
     
-    // Clamp the zoom between our min and max values
-    return Math.min(Math.max(initialZoom, 0.5), 2);
+    // Apply reasonable bounds
+    return Math.min(Math.max(ratio, 0.5), 1.2);
+  };
+
+  // Initialize responsive scale factor
+  const [responsiveScale, setResponsiveScale] = useState(calculateResponsiveScale());
+  
+  // Add zoom state for user-controlled zooming
+  // Start with a larger initial zoom to fit the board better
+  const [zoomLevel, setZoomLevel] = useState(1.2);
+  
+  // Min and max zoom limits
+  const MIN_ZOOM = 0.5;
+  const MAX_ZOOM = 9.99;
+  
+  // Function to handle zoom in
+  const handleZoomIn = () => {
+    setZoomLevel(prevZoom => {
+      // Calculate zoom increment based on current zoom level for acceleration
+      const zoomIncrement = Math.max(0.05, prevZoom * 0.08);
+      return Math.min(prevZoom + zoomIncrement, MAX_ZOOM);
+    });
   };
   
-  // Initialize zoom level with calculated value
-  const [zoomLevel, setZoomLevel] = useState(calculateInitialZoom());
+  // Function to handle zoom out
+  const handleZoomOut = () => {
+    setZoomLevel(prevZoom => {
+      // Calculate zoom decrement based on current zoom level for acceleration
+      const zoomDecrement = Math.max(0.05, prevZoom * 0.08);
+      return Math.max(prevZoom - zoomDecrement, MIN_ZOOM);
+    });
+  };
+  
+  // Function to reset zoom to default
+  const handleResetZoom = () => {
+    setZoomLevel(1.2); // Reset to initial zoom level
+    
+    // Reset board position to center
+    const boardElement = document.querySelector('.board');
+    if (boardElement) {
+      // Find the board component's container
+      const boardContainer = document.querySelector('.board-container');
+      
+      // Reset transforms - this will make the Board component use its centered positioning
+      if (boardContainer) {
+        // Trigger a reflow to ensure the board's centerBoard function runs
+        boardContainer.dispatchEvent(new Event('resetposition', { bubbles: true }));
+      }
+    }
+  };
 
-  // Add window resize handler
+  // Simple resize handler
   useEffect(() => {
     const handleResize = () => {
-      setZoomLevel(calculateInitialZoom());
+      setResponsiveScale(calculateResponsiveScale());
     };
-
+    
+    const handleWheel = (e: WheelEvent) => {
+      // Check if the wheel event is on the board area
+      const boardArea = document.querySelector('.board-area');
+      if (boardArea && (boardArea.contains(e.target as Node) || boardArea === e.target)) {
+        e.preventDefault();
+        
+        // Determine zoom direction (deltaY < 0 means zoom in)
+        const zoomDirection = e.deltaY < 0 ? 1 : -1;
+        
+        // Calculate zoom factor based on current zoom level and event delta
+        // Use a base factor and add acceleration based on current zoom and wheel speed
+        const baseFactor = 0.01;
+        const accelerationFactor = Math.min(0.02, Math.abs(e.deltaY) / 500);
+        const zoomFactor = baseFactor + (accelerationFactor * Math.max(1, Math.sqrt(zoomLevel)));
+        
+        const zoomChange = zoomFactor * zoomDirection;
+        
+        setZoomLevel(prevZoom => {
+          const newZoom = prevZoom + zoomChange;
+          return Math.min(Math.max(newZoom, MIN_ZOOM), MAX_ZOOM);
+        });
+      }
+    };
+    
+    // For pinch zoom on touch devices
+    let initialTouchDistance = 0;
+    
+    const getTouchDistance = (e: TouchEvent): number => {
+      if (e.touches.length < 2) return 0;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+    
+    const handleTouchStart = (e: TouchEvent) => {
+      // Only handle pinch gesture (2 fingers)
+      if (e.touches.length === 2) {
+        // Check if touch is on the board area
+        const boardArea = document.querySelector('.board-area');
+        if (boardArea && (boardArea.contains(e.target as Node) || boardArea === e.target)) {
+          initialTouchDistance = getTouchDistance(e);
+        }
+      }
+    };
+    
+    const handleTouchMove = (e: TouchEvent) => {
+      // Only handle pinch gesture (2 fingers)
+      if (e.touches.length === 2 && initialTouchDistance > 0) {
+        // Check if touch is on the board area
+        const boardArea = document.querySelector('.board-area');
+        if (boardArea && (boardArea.contains(e.target as Node) || boardArea === e.target)) {
+          e.preventDefault();
+          
+          const currentDistance = getTouchDistance(e);
+          const distanceChange = currentDistance - initialTouchDistance;
+          
+          // Respond to even smaller changes to make zoom feel more responsive
+          if (Math.abs(distanceChange) > 5) {
+            // Calculate base zoom factor based on the pinch delta
+            const baseZoomFactor = (distanceChange / initialTouchDistance) * 0.15;
+            
+            // Add acceleration based on current zoom level and pinch speed
+            // The faster the pinch and higher the zoom, the more responsive
+            const pinchSpeed = Math.min(1, Math.abs(distanceChange) / 100);
+            const accelerationFactor = pinchSpeed * 0.15 * Math.sqrt(zoomLevel);
+            
+            // Combine base factor with acceleration for final zoom change
+            const zoomChange = baseZoomFactor + (baseZoomFactor * accelerationFactor);
+            
+            setZoomLevel(prevZoom => {
+              const newZoom = prevZoom + zoomChange;
+              return Math.min(Math.max(newZoom, MIN_ZOOM), MAX_ZOOM);
+            });
+            
+            // Update initial distance for the next move
+            initialTouchDistance = currentDistance;
+          }
+        }
+      }
+    };
+    
+    const handleTouchEnd = () => {
+      initialTouchDistance = 0;
+    };
+    
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [zoomLevel]);
+  
+  // Debug useEffect for peg tracking
+  useEffect(() => {
+    // Add debug logging for pegs when gameState changes
+    if (gameState && gameState.board) {
+      // Count pegs in each space
+      const pegCountsBySpace: Record<string, number> = {};
+      
+      // Function to count pegs
+      const countPegs = () => {
+        if (!gameState.board.allSpaces) return;
+        
+        // Count pegs in each space
+        let totalPegs = 0;
+        const spaces = gameState.board.allSpaces instanceof Map 
+          ? Array.from(gameState.board.allSpaces.values())
+          : Object.values(gameState.board.allSpaces);
+        
+        spaces.forEach((space: any) => {
+          if (space.pegs && Array.isArray(space.pegs)) {
+            pegCountsBySpace[space.id] = space.pegs.length;
+            totalPegs += space.pegs.length;
+          }
+        });
+        
+        // Find spaces with pegs
+        const spacesWithPegs = Object.entries(pegCountsBySpace)
+          .filter(([_, count]) => count > 0)
+          .map(([id, count]) => `${id}: ${count}`)
+          .join(', ');
+        
+        console.log(`[GameController] Board has ${totalPegs} total pegs. Spaces with pegs: ${spacesWithPegs || 'none'}`);
+        
+        // Look specifically for a starting space
+        const startingSpace = spaces.find((s: any) => 
+          s.type === 'starting' || (s.id && s.id.includes('_starting')));
+        
+        if (startingSpace) {
+          console.log(`[GameController] Starting space (${(startingSpace as any).id}) has ${(startingSpace as any).pegs?.length || 0} pegs`);
+          if ((startingSpace as any).pegs && (startingSpace as any).pegs.length > 0) {
+            console.log(`[GameController] Sample pegs: ${(startingSpace as any).pegs.slice(0, 3).join(', ')}`);
+          }
+        } else {
+          console.log(`[GameController] No starting space found!`);
+        }
+      };
+      
+      countPegs();
+    }
+  }, [gameState]);
   
   // UI state
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -222,6 +457,16 @@ const GameController: React.FC<GameControllerProps> = ({
     const logMessage = `[${timestamp}] ${message}`;
     console.log(`[DEBUG] ${logMessage}`);
     setDebugLogs(prev => [...prev, logMessage]);
+  };
+  
+  // Add a function to update game state and notify other players in multiplayer mode
+  const updateGameState = (newState: GameState) => {
+    setGameState(newState);
+    
+    // If in multiplayer mode, send the update to server
+    if (isMultiplayer && onUpdateGameState) {
+      onUpdateGameState(newState);
+    }
   };
   
   useEffect(() => {
@@ -314,13 +559,18 @@ const GameController: React.FC<GameControllerProps> = ({
     setTimeout(() => {
       // Use the existing shuffleAndDealCards function
       const newState = shuffleAndDealCards(gameState);
-      setGameState(newState);
+      updateGameState(newState);
       setIsShuffling(false);
     }, 3000); // 3 seconds for the animation
   };
   
   // Handle card selection
   const handleCardSelect = (cardId: string) => {
+    // If in multiplayer mode and not current player's turn, do nothing
+    if (isMultiplayer && !isCurrentPlayerTurn) {
+      return;
+    }
+    
     // If a card is already selected, reset everything
     if (selectedCardId) {
       setPromptMessage('');
@@ -421,7 +671,7 @@ const GameController: React.FC<GameControllerProps> = ({
     Log(`Nine card direction selected: ${direction}`);
     setNineCardState(prev => ({ 
       ...prev, 
-      state: 'DIRECTION_SELECTED',
+      state: 'SPLIT_SELECT_STEPS',
       direction 
     }));
     setPromptMessage(`How many spaces ${direction} would you like to move? (1-8)`);
@@ -1799,6 +2049,11 @@ const GameController: React.FC<GameControllerProps> = ({
   
   // Modify handlePegSelect with castle entrance checking
   const handlePegSelect = (pegId: string) => {
+    // If in multiplayer mode and not current player's turn, do nothing
+    if (isMultiplayer && !isCurrentPlayerTurn) {
+      return;
+    }
+    
     // Special handling for dev mode - move pegs feature
     if (devMode && movePegsMode) {
       // In move pegs mode, we allow selecting any peg from any player
@@ -2115,6 +2370,11 @@ const GameController: React.FC<GameControllerProps> = ({
   
   // Handle space selection for peg movement
   const handleSpaceSelect = (spaceId: string) => {
+    // If in multiplayer mode and not current player's turn, do nothing
+    if (isMultiplayer && !isCurrentPlayerTurn) {
+      return;
+    }
+    
     logDebug(`Space clicked: ${spaceId}, Selected Peg: ${selectedPegId}, Is selectable: ${selectableSpaceIds.includes(spaceId)}`);
     
     // Special handling for dev mode - move pegs feature
@@ -2270,6 +2530,12 @@ const GameController: React.FC<GameControllerProps> = ({
   
   // Handle end turn
   const handleEndTurn = (currentState: GameState = gameState) => {
+    // Check if the game is over
+    if (isGameOver(currentState)) {
+      setPromptMessage("Game Over!");
+      return;
+    }
+
     // If in preserve play mode, reset the turn state but don't advance to next player
     let nextState;
     if (devMode && preservePlayMode) {
@@ -2278,7 +2544,12 @@ const GameController: React.FC<GameControllerProps> = ({
       nextState = advanceToNextPlayer(currentState);
     }
     
-    setGameState(nextState);
+    // Hide cards when a new turn begins (for pass-and-play feature)
+    if (!isMultiplayer) {
+      setShowCards(false);
+    }
+    
+    updateGameState(nextState);
     setSelectedCardId(null);
     setSelectedPegId(null);
     setSelectableSpaceIds([]);
@@ -2289,7 +2560,7 @@ const GameController: React.FC<GameControllerProps> = ({
     // Clear bump message after a delay
     setTimeout(() => setBumpMessage(undefined), 3000);
   };
-  
+
   // Add this function to handle discarding and redrawing
   const handleDiscardAndRedraw = () => {
     const newState = { ...gameState };
@@ -2313,16 +2584,11 @@ const GameController: React.FC<GameControllerProps> = ({
       }
     }
     
-    // Advance to next player
-    const nextState = advanceToNextPlayer(newState);
-    setGameState(nextState);
+    // Update game state
+    updateGameState(newState);
     
-    // Reset turn state
-    setSelectedCardId(null);
-    setSelectedPegId(null);
-    setSelectableSpaceIds([]);
-    setSelectablePegIds([]);
-    setPromptMessage('');
+    // Advance to next player
+    handleEndTurn(newState);
   };
   
   // Function to shuffle the current player's hand (dev mode)
@@ -2350,15 +2616,6 @@ const GameController: React.FC<GameControllerProps> = ({
     
     setGameState(newState);
     setSelectedCardId(null);
-  };
-  
-  // Add zoom handling functions
-  const handleZoomIn = () => {
-    setZoomLevel(prevZoom => Math.min(prevZoom + 0.1, 2));
-  };
-
-  const handleZoomOut = () => {
-    setZoomLevel(prevZoom => Math.max(prevZoom - 0.1, 0.5));
   };
   
   // Render welcome/shuffle phase
@@ -2412,144 +2669,180 @@ const GameController: React.FC<GameControllerProps> = ({
   
   // Add a new function to handle skipping the second move
   const handleSkipSecondMove = () => {
-    Log('Player chose to skip the second move of 9 card split');
-    
-    // Make sure the card gets discarded since we're ending the turn
-    const currentPlayer = gameState?.players[gameState?.currentPlayerIndex];
-    const selectedCard = currentPlayer?.hand.find(c => c.id === selectedCardId);
-    
-    if (selectedCard) {
-      Log(`Discarding card ${selectedCard.rank} of ${selectedCard.suit} since second move is being skipped`);
-      
-      // Create an updated game state with the card discarded
-      const updatedPlayers = [...gameState.players];
-      const playerIndex = gameState.currentPlayerIndex;
-      
-      // Remove the card from the player's hand
-      updatedPlayers[playerIndex] = {
-        ...updatedPlayers[playerIndex],
-        hand: updatedPlayers[playerIndex].hand.filter(c => c.id !== selectedCardId)
-      };
-      
-      // Add the card to the discard pile
-      const newState = {
-        ...gameState,
-        players: updatedPlayers,
-        discardPile: [...gameState.discardPile, selectedCard]
-      };
-      
-      // Update game state
-      setGameState(newState);
-    }
-    
-    // Reset all state
-    setSelectedPegId(null);
-    setSelectedCardId('');
-    setSelectableSpaceIds([]);
-    setSelectablePegIds([]);
-    setPromptMessage('Second move skipped.');
-    
-    // Reset nine card state
+    setPromptMessage('You have chosen to skip your second move.');
     setNineCardState({ state: 'INITIAL', firstMoveComplete: false });
     
     // End the player's turn
     Log('Ending turn after skipping second move of 9 card split');
     handleEndTurn(gameState);
   };
-  
+
+  // Add handler for revealing hand
+  const handleRevealHand = () => {
+    setShowCards(true);
+  };
+
   return (
-    <div className="game-container">
-      {/* Dev mode toggle */}
-      <div className="dev-mode-container">
-        <label className="dev-switch">
-          <input 
-            type="checkbox" 
-            checked={devMode} 
-            onChange={() => setDevMode(!devMode)} 
-          />
-          <span className="dev-slider"></span>
-          <span className="dev-label">Dev Mode</span>
-        </label>
-      </div>
-      
-      {/* Dev mode controls */}
-      {devMode && gameState.phase === 'playing' && (
-        <>
-          <div className="shuffle-hand-container">
-            <button
-              className="shuffle-hand-button"
-              onClick={handleShuffleHand}
-            >
-              Shuffle Hand
+    <div 
+      className="game-controller"
+      style={{
+        background: 'radial-gradient(circle, #4a0505 0%, #240000 100%)',
+        height: '100vh',
+        width: '100vw',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0
+      }}
+    >
+      <div 
+        className="game-container"
+        style={{
+          background: 'transparent',
+          height: '100%',
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column'
+        }}
+      >
+        {/* NEW TOP PANEL for turn indicator and controls */}
+        <div 
+          className="top-panel"
+          style={{ 
+            background: 'rgba(255, 255, 255, 0.1)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)'
+          }}
+        >
+          {/* Empty div for spacing */}
+          <div style={{ width: 100 }}></div>
+          
+          {/* Player turn indicator */}
+          <div 
+            className="player-turn-indicator"
+            style={{ 
+              color: playerColors[gameState?.players[gameState?.currentPlayerIndex]?.id],
+              textShadow: `0 2px 4px rgba(0, 0, 0, 0.5), 0 0 10px ${playerColors[gameState?.players[gameState?.currentPlayerIndex]?.id]}` 
+            }}
+          >
+            {gameState?.players[gameState?.currentPlayerIndex]?.name}'s Turn
+          </div>
+          
+          {/* Dev Mode Toggle */}
+          <div className="dev-tools">
+            <div className="dev-mode-container">
+              <label className="dev-switch">
+                <input 
+                  type="checkbox" 
+                  checked={devMode} 
+                  onChange={() => setDevMode(!devMode)} 
+                />
+                <span className="dev-slider"></span>
+                <span className="dev-label">Dev Mode</span>
+              </label>
+              
+              {/* Dev mode controls */}
+              {devMode && gameState.phase === 'playing' && (
+                <div className="dev-controls-group">
+                  <button
+                    className="dev-button shuffle-hand-button"
+                    onClick={handleShuffleHand}
+                  >
+                    Shuffle Hand
+                  </button>
+                  
+                  <button
+                    className={`dev-button move-pegs-button ${movePegsMode ? 'active' : ''}`}
+                    onClick={() => setMovePegsMode(!movePegsMode)}
+                  >
+                    {movePegsMode ? 'Exit Peg Edit Mode' : 'Edit Peg Positions'}
+                  </button>
+                  
+                  <button
+                    className={`dev-button preserve-play-button ${preservePlayMode ? 'active' : ''}`}
+                    onClick={() => setPreservePlayMode(!preservePlayMode)}
+                  >
+                    {preservePlayMode ? 'Auto End Turn Off' : 'Auto End Turn On'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        {/* Main game board area */}
+        <div className="board-area">
+          <div className="board-container-wrapper">
+            <div className="board-container" style={{ position: 'relative', width: '100%', height: '100%' }}>
+              <Board
+                board={gameState?.board}
+                onSpaceClick={handleSpaceSelect}
+                onPegSelect={handlePegSelect}
+                selectedPegId={selectedPegId}
+                currentPlayerId={gameState?.players[gameState?.currentPlayerIndex]?.id}
+                selectableSpaceIds={selectableSpaceIds}
+                selectablePegIds={selectablePegIds}
+                playerColors={playerColors}
+                zoomLevel={zoomLevel * responsiveScale} // Combine user zoom with responsive scale
+              />
+              
+              {floatingElements.map(element => (
+                <div
+                  key={element.id}
+                  className={`floating-element ${element.type}`}
+                  style={{
+                    backgroundColor: element.type === 'peg' ? element.color : undefined,
+                    left: `${element.x}%`,
+                    top: `${element.y}%`,
+                    transform: `rotate(${element.rotation}deg) scale(${element.scale})`,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+          
+          {/* Add zoom controls */}
+          <div className="zoom-controls">
+            <button className="zoom-button" onClick={handleZoomIn}>+</button>
+            <div className="zoom-level">{Math.round(zoomLevel * 100)}%</div>
+            <button className="zoom-button" onClick={handleZoomOut}>−</button>
+            <button className="zoom-button reset-zoom" onClick={handleResetZoom} title="Reset zoom">
+              <span style={{ fontSize: '14px' }}>⟲</span>
             </button>
           </div>
           
-          <div className="preserve-play-container">
-            <button
-              className={`preserve-play-button ${preservePlayMode ? 'active' : ''}`}
-              onClick={() => {
-                const newMode = !preservePlayMode;
-                setPreservePlayMode(newMode);
-                
-                if (newMode) {
-                  setPromptMessage('Preserve Play Mode: Current player turn will be preserved when playing cards.');
-                } else {
-                  setPromptMessage('Resumed normal turn advancement.');
-                }
-              }}
-            >
-              {preservePlayMode ? 'Resume Turns' : 'Preserve Play'}
-            </button>
-          </div>
-          
-          <div className="move-pegs-container">
-            <button
-              className={`move-pegs-button ${movePegsMode ? 'active' : ''}`}
-              onClick={() => {
-                // Toggle move pegs mode
-                const newMode = !movePegsMode;
-                setMovePegsMode(newMode);
-                
-                // If enabling move pegs mode, make all pegs selectable
-                if (newMode) {
-                  // Collect all peg IDs on the board
-                  const allPegIds: string[] = [];
-                  
-                  // Loop through all spaces and collect their pegs
-                  for (const space of Array.from(gameState.board.allSpaces.values())) {
-                    if (space.pegs.length > 0) {
-                      allPegIds.push(...space.pegs);
-                    }
-                  }
-                  
-                  // Set all pegs as selectable
-                  setSelectablePegIds(allPegIds);
-                  setPromptMessage('Move Pegs Mode: Select any peg to move it.');
-                } else {
-                  // If disabling, clear selectable pegs
-                  setSelectablePegIds([]);
-                  setSelectableSpaceIds([]);
-                  setSelectedPegId(null);
-                  setPromptMessage('Exited Move Pegs Mode.');
-                }
-              }}
-            >
-              {movePegsMode ? 'Exit Move Pegs' : 'Move Pegs'}
-            </button>
-          </div>
-        </>
-      )}
-      
-      <div className="game-board-container">
-        {(promptMessage || bumpMessage) && (
-          <div className="prompt-message">
-            {promptMessage && <div>{promptMessage}</div>}
-            {bumpMessage && <div className="bump-message">{bumpMessage}</div>}
+          {/* Card controls container - positioned at bottom of board area */}
+          <div className="card-controls-container">
+            {(promptMessage || bumpMessage) && (
+              <div 
+                className="prompt-message"
+                style={{ 
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  backdropFilter: 'blur(10px)',
+                  WebkitBackdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
+                }}
+              >
+                {promptMessage && <div>{promptMessage}</div>}
+                {bumpMessage && <div className="bump-message">{bumpMessage}</div>}
+              </div>
+            )}
             
             {/* Castle Entry prompt */}
             {castlePromptState.isActive && (
-              <div className="castle-choice-controls">
-                <button 
+              <div 
+                className="castle-choice-controls"
+                style={{ 
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  backdropFilter: 'blur(10px)',
+                  WebkitBackdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
+                }}
+              >
+                <button
                   className="castle-choice-button enter"
                   onClick={() => handleCastleChoice(true)}
                 >
@@ -2573,7 +2866,16 @@ const GameController: React.FC<GameControllerProps> = ({
             )}
             
             {selectedCardId && gameState?.players[gameState?.currentPlayerIndex]?.hand.find(c => c.id === selectedCardId)?.rank === '9' && (
-              <div className="nine-card-controls">
+              <div 
+                className="nine-card-controls"
+                style={{ 
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  backdropFilter: 'blur(10px)',
+                  WebkitBackdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
+                }}
+              >
                 {/* Initial option selection: Move 9 or Split 9 */}
                 {nineCardState.state === 'INITIAL' && !nineCardState.splitSelected && (
                   <>
@@ -2584,29 +2886,52 @@ const GameController: React.FC<GameControllerProps> = ({
                 
                 {/* Direction selection for split move */}
                 {nineCardState.state === 'INITIAL' && nineCardState.splitSelected && (
-                  <>
-                    <button onClick={() => handleNineCardDirection('forward')}>Forward First</button>
-                    <button onClick={() => handleNineCardDirection('backward')}>Backward First</button>
-                  </>
+                  <div className="direction-input">
+                    <button onClick={() => handleNineCardDirection('forward')}>
+                      <span>Forward First</span>
+                    </button>
+                    <button onClick={() => handleNineCardDirection('backward')}>
+                      <span>Backward First</span>
+                    </button>
+                  </div>
                 )}
                 
-                {/* Steps selection after direction is chosen */}
-                {nineCardState.state === 'DIRECTION_SELECTED' && (
+                {/* Split mode - Step input */}
+                {nineCardState.state === 'SPLIT_SELECT_STEPS' && nineCardState.splitSelected && (
                   <div className="steps-input">
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
-                      <button 
-                        key={num}
-                        onClick={() => handleNineCardSteps(num)}
-                      >
-                        {num}
-                      </button>
-                    ))}
+                    <p>First peg moves forward. Second peg moves backward. Both movements must add up to 9.</p>
+                    <p>How many steps should the first peg move forward?</p>
+                    <div className="step-buttons-grid">
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
+                        <button 
+                          key={num}
+                          onClick={() => handleNineCardSteps(num)}
+                          className="step-button"
+                        >
+                          <span className="step-number">{num}</span>
+                          <span className="step-direction">
+                            <span className="forward-text">{num} forward</span>
+                            <span className="backward-text">{9-num} backward</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
             )}
+            
             {selectedCardId && gameState?.players[gameState?.currentPlayerIndex]?.hand.find(c => c.id === selectedCardId)?.rank === '7' && (
-              <div className="seven-card-controls">
+              <div 
+                className="seven-card-controls"
+                style={{ 
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  backdropFilter: 'blur(10px)',
+                  WebkitBackdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
+                }}
+              >
                 {!sevenCardState.isSplit && !sevenCardState.firstMoveSteps && (
                   <>
                     <button onClick={() => handleSevenCardOption('move')}>Move 1 peg forward 7</button>
@@ -2628,72 +2953,68 @@ const GameController: React.FC<GameControllerProps> = ({
               </div>
             )}
           </div>
-        )}
-        <div className="board-area">
-          <div className="board-container-wrapper">
-            <Board 
-              board={gameState?.board}
-              onSpaceClick={handleSpaceSelect}
-              onPegSelect={handlePegSelect}
-              selectedPegId={selectedPegId}
-              currentPlayerId={gameState?.players[gameState?.currentPlayerIndex]?.id}
-              selectableSpaceIds={selectableSpaceIds}
-              selectablePegIds={selectablePegIds}
-              playerColors={playerColors}
-              zoomLevel={zoomLevel}
-            />
-          </div>
         </div>
-        
-        <div className="bottom-panel">
-          <div 
-            className="player-turn-indicator"
-            style={{ 
-              color: playerColors[gameState?.players[gameState?.currentPlayerIndex]?.id],
-              textShadow: `0 2px 4px rgba(0, 0, 0, 0.5), 0 0 10px ${playerColors[gameState?.players[gameState?.currentPlayerIndex]?.id]}` 
-            }}
-          >
-            {gameState?.players[gameState?.currentPlayerIndex]?.name}'s Turn
-          </div>
-          
-          <div className="controls-container">
+
+        {/* Bottom panel with cards */}
+        <div 
+          className="bottom-panel"
+          style={{ 
+            /* Removing panel styling to let cards float above background */
+            background: 'transparent',
+            backdropFilter: 'none',
+            WebkitBackdropFilter: 'none',
+            boxShadow: 'none',
+            borderTop: 'none'
+          }}
+        >
+          <div className="card-hand-container">
+            {/* Reveal Hand button (only show in local play when cards are hidden) */}
+            {!isMultiplayer && !showCards && (
+              <button 
+                className="reveal-hand-button"
+                onClick={handleRevealHand}
+                style={{ 
+                  backgroundColor: playerColors[gameState?.players[gameState?.currentPlayerIndex]?.id] || '#990000',
+                  boxShadow: `0 4px 12px ${playerColors[gameState?.players[gameState?.currentPlayerIndex]?.id] || '#990000'}4D`
+                }}
+              >
+                Reveal Hand
+              </button>
+            )}
+            
             <CardHand 
               cards={gameState?.players[gameState?.currentPlayerIndex]?.hand}
               selectedCardId={selectedCardId}
               onCardSelect={handleCardSelect}
+              showCards={isMultiplayer ? true : showCards}
+              playerColor={playerColors[gameState?.players[gameState?.currentPlayerIndex]?.id] || '#990000'}
             />
             
-            <div className="zoom-controls">
-              <button className="zoom-button" onClick={handleZoomIn}>+</button>
-              <div className="zoom-level">{Math.round(zoomLevel * 100)}%</div>
-              <button className="zoom-button" onClick={handleZoomOut}>−</button>
-            </div>
-          </div>
-          
-          <div className="turn-controls">
-            {canUseDiscardButton(gameState, gameState?.players[gameState?.currentPlayerIndex]) && (
+            {/* Discard button */}
+            {canUseDiscardButton(gameState, gameState?.players[gameState?.currentPlayerIndex]) && showCards && (
               <button 
                 className="discard-hand-button"
                 onClick={handleDiscardAndRedraw}
               >
-                Discard Hand & Draw New Cards
+                Discard Hand
               </button>
             )}
           </div>
         </div>
-        
-        {gameState?.phase === 'gameOver' && (
-          <div className="game-over-overlay">
-            <div className="game-over-modal">
-              <h2>Game Over!</h2>
-              <p>Team {gameState.winner?.teamId} wins!</p>
-              <button onClick={() => window.location.reload()}>
-                Play Again
-              </button>
-            </div>
-          </div>
-        )}
       </div>
+      
+      {/* Game over overlay */}
+      {gameState?.phase === 'gameOver' && (
+        <div className="game-over-overlay">
+          <div className="game-over-modal">
+            <h2>Game Over!</h2>
+            <p>Team {gameState.winner?.teamId} wins!</p>
+            <button onClick={() => window.location.reload()}>
+              Play Again
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

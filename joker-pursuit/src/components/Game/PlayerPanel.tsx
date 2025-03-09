@@ -1,6 +1,7 @@
 import React from 'react';
 import { Player } from '../../models/Player';
 import { GameState } from '../../models/GameState';
+import { BoardSpace } from '../../models/BoardModel';
 import './PlayerPanel.css';
 
 interface PlayerPanelProps {
@@ -16,10 +17,23 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
   isCurrentTeam,
   gameState
 }) => {
+  // Helper function to safely get all spaces as an array
+  const getSpacesArray = (spaceCollection: any): BoardSpace[] => {
+    if (!spaceCollection) return [];
+    
+    if (spaceCollection instanceof Map) {
+      // Client-side Map object
+      return Array.from(spaceCollection.values());
+    } else {
+      // Server-side serialized object
+      return Object.values(spaceCollection);
+    }
+  };
+  
   // Helper function to find what type of space a peg is in
   const getPegSpaceType = (pegId: string): string => {
     // Find the space containing this peg
-    for (const space of Array.from(gameState.board.allSpaces.values())) {
+    for (const space of getSpacesArray(gameState.board.allSpaces)) {
       if (space.pegs.includes(pegId)) {
         return space.type;
       }

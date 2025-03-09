@@ -221,6 +221,10 @@
     inset 0 2px 4px rgba(0, 0, 0, 0.2),
     0 1px 1px rgba(255, 255, 255, 0.1);
   transition: all 0.2s ease;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  position: relative;
 }
 
 .team-select select:focus,
@@ -232,9 +236,58 @@
     0 0 0 2px rgba(255, 255, 255, 0.1);
 }
 
+.color-select {
+  position: relative;
+}
+
+.color-select::after {
+  content: '▼';
+  font-size: 0.8rem;
+  color: white;
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
 .color-select select option {
   background-color: #1a1a2e;
   padding: 1rem;
+  font-weight: bold;
+}
+
+.color-select select option[value="#FF5733"] { 
+  background-color: #FF5733;
+  color: white;
+}
+.color-select select option[value="#33A1FF"] { 
+  background-color: #33A1FF;
+  color: white;
+}
+.color-select select option[value="#33FF57"] { 
+  background-color: #33FF57;
+  color: white;
+}
+.color-select select option[value="#F033FF"] { 
+  background-color: #F033FF;
+  color: white;
+}
+.color-select select option[value="#FFFF33"] { 
+  background-color: #FFFF33;
+  color: black;
+}
+.color-select select option[value="#FF33A8"] { 
+  background-color: #FF33A8;
+  color: white;
+}
+.color-select select option[value="#33FFEC"] { 
+  background-color: #33FFEC;
+  color: black;
+}
+.color-select select option[value="#FF8C33"] { 
+  background-color: #FF8C33;
+  color: white;
 }
 
 .setup-actions {

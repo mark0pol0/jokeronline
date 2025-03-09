@@ -1,63 +1,137 @@
-# Joker Pursuit
+# Joker Pursuit - Multiplayer Card Game
 
-A digital implementation of the classic card-based board game where you race your pegs to your castle while blocking opponents.
+A digital implementation of the classic Joker Pursuit board game with both local and online multiplayer modes.
 
-## Game Overview
+## Features
 
-Joker Pursuit is a strategic board game for 2-8 players who can be divided into teams. Each player has 4 pegs that start in the center of the board. The goal is to move all your pegs to your castle before the other team does.
+- Play locally with 2-8 players on the same device
+- Play online with friends using a simple room code system
+- Beautiful, intuitive user interface
+- Full implementation of all game rules and special card actions
 
-### Game Features
+## Getting Started
 
-- 🎮 Simple, intuitive interface
-- 🎲 Strategic gameplay with cards
-- 👥 2-8 player support
-- 🏰 Team-based play
-- 🃏 Special card abilities
-- 🔄 Dynamic board layout options
+### Prerequisites
+
+- Node.js (v14 or higher)
+- npm (v6 or higher)
+
+### Installation
+
+1. Clone the repository:
+```
+git clone https://github.com/yourusername/joker-pursuit.git
+cd joker-pursuit
+```
+
+2. Install dependencies for the client:
+```
+npm install
+```
+
+3. Install dependencies for the server:
+```
+cd server
+npm install
+cd ..
+```
+
+### Running the Game
+
+#### Local Development
+
+1. Start the client:
+```
+npm start
+```
+
+2. Start the server (in a separate terminal):
+```
+cd server
+npm run dev
+```
+
+3. Open your browser and navigate to `http://localhost:3000`
+
+#### Production Build
+
+1. Build the client:
+```
+npm run build
+```
+
+2. Build the server:
+```
+cd server
+npm run build
+```
+
+3. Start the server:
+```
+cd server
+npm start
+```
 
 ## How to Play
 
-1. **Setup**: Choose the number of players (2-8), configure teams, and start the game.
-2. **Movement**: On your turn, select a card from your hand to make a move.
-3. **Card Actions**:
-   - **Number Cards (2-10)**: Move a peg forward the number of spaces shown.
-   - **Face Cards (J, Q, K)**: Move 10 spaces or from starting circle to the main path.
-   - **Ace**: Move 1 space or enter the castle from an entrance.
-   - **Joker**: Bump any opponent's peg.
-   - **7**: Move seven spaces or split between two pegs.
-   - **8**: Move eight spaces backward.
-   - **9**: Move nine spaces or split with one forward and one backward.
-4. **Bumping**: If you land on an opponent's peg, they return to the starting circle. If you land on a teammate's peg, they advance to their castle entrance.
-5. **Castles**: Each team has castle entrances at specific points on the board. Moving up the castle requires exact moves.
-6. **Winning**: The first team to get all their pegs into their castles wins.
+### Local Game
 
-## Game Board
+1. From the home screen, click "Local Game"
+2. Set up the game by adding players, selecting colors, and configuring teams
+3. Start the game and enjoy!
 
-The game board consists of:
-- A main path with 18 horizontal spaces
-- Two castle entrances (at spaces 10 and 15)
-- Two castles with 5 spaces each
-- A starting circle in the center
+### Online Multiplayer
 
-## Technical Details
+1. From the home screen, click "Play Online"
+2. Choose to either "Host a Game" or "Join a Game"
 
-This project is built with:
-- React
-- TypeScript
-- CSS for styling
+#### Hosting a Game
 
-## Development
+1. Enter your name and click "Create Room"
+2. Share the displayed room code with your friends
+3. Wait for players to join
+4. When everyone is ready, click "Start Game"
+5. Select your color when prompted
+6. As the host, you'll need to shuffle and deal the cards to begin
 
-To run the project locally:
+#### Joining a Game
 
-1. Clone the repository
-2. Install dependencies with `npm install`
-3. Start the development server with `npm start`
+1. Enter your name and the room code provided by the host
+2. Click "Join Room"
+3. Wait for the host to start the game
+4. Select your color when prompted
+5. Wait for the host to shuffle and deal the cards
 
-## Credits
+## Game Rules
 
-Created by [Your Name] using React and TypeScript.
+Joker Pursuit is a strategic board game where each player has 5 pegs and uses cards to move them from the starting circle into their castle.
+
+### Setup
+- Each player gets 5 pegs and a deck of 54 cards
+- Players are dealt 5 cards each
+- Players take turns in circular fashion, clockwise around the board to the left
+
+### Card Actions
+- **Ace:** Moves a peg one space, OR out of the starting circle, OR moves from one corner of the board to the next even if this skips over one's own pegs
+- **Face Cards (J, Q, K):** Moves a peg forward ten spaces, OR out of the starting circle
+- **Joker:** Moves a peg from the board or starting circle to bump another's peg on the board anywhere. Can skip one's own pegs, but can't attack others' circles or castles, and can't move to an empty space
+- **Seven:** Moves one peg forward seven spaces, OR may be split between two pegs with both moving forward
+- **Eight:** Moves eight spaces in reverse. If played right after getting out, the peg will end up on the back right corner
+- **Nine:** Moves one peg forward nine spaces, OR may be split between two pegs with one moving forward and the other in reverse
+- All other cards (2-6, 10) move a peg forward their numeric value
+
+### Special Rules
+- **Teams:** Players may play with two or more teams. Teammates sit opposite each other or alternate around the board.
+- **Bump:** Landing on an opponent's peg bumps them back to the starting circle. Landing on a teammate's peg sends them to their castle entrance.
+- **Jumping:** Players may move their own pegs past the pegs of their opponents, but may not pass their own pegs.
+- **Discard:** If a player has no playable moves, they must discard all five cards and draw a new hand as their turn.
+- **Castle:** Only a player's own pegs may enter their own castle. Pegs in castles are safe from attacks of other players.
 
 ## License
 
-MIT License
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- Original Joker Pursuit game creators
+- All contributors to this digital implementation

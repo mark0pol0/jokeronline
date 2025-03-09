@@ -1,17 +1,26 @@
 .board-container {
   width: 100%;
-  height: calc(100vh - 120px);
+  height: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
   overflow: hidden;
   padding: 0;
+  margin: 0;
   position: relative;
   cursor: grab;
   user-select: none;
+  -webkit-user-select: none; /* Safari support */
   z-index: 1;
-  margin: 0;
   background: transparent;
+  touch-action: none; /* Prevents browser handling of touch gestures */
+  box-sizing: border-box; /* Ensure consistent box model */
+  border: none;
+  /* Prevent any background from showing through */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  -webkit-transform: translate3d(0,0,0);
+  transform: translate3d(0,0,0);
 }
 
 .board-container.dragging {
@@ -24,17 +33,24 @@
 
 .board {
   position: absolute;
-  width: 1400px;
-  height: 1400px;
-  background: transparent;
-  z-index: 2;
-  transform-origin: center;
-  transition: transform 0.1s ease;
-  overflow: visible;
   left: 50%;
   top: 50%;
+  width: 1400px; /* Base size for scaling */
+  height: 1400px;
   transform: translate(-50%, -50%);
+  transform-origin: center;
   will-change: transform;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-sizing: border-box; /* Ensure consistent box model */
+  background: transparent; /* Changed from white to transparent */
+  /* Prevent any background from showing through */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  z-index: 2;
+  transition: transform 0.1s ease;
+  overflow: visible;
 }
 
 .board-background-circle {
@@ -220,68 +236,6 @@
   z-index: 5;
 }
 
-.zoom-controls {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  background-color: rgba(255, 255, 255, 0.2);
-  padding: 10px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  z-index: 15;
-  margin-left: 20px;
-}
-
-.zoom-button {
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 8px;
-  background: linear-gradient(180deg, #616161 0%, #424242 100%);
-  color: white;
-  font-size: 20px;
-  font-weight: bold;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  box-shadow: 
-    0 2px 0 #212121,
-    0 4px 8px rgba(97, 97, 97, 0.4),
-    inset 0 1px rgba(255, 255, 255, 0.3);
-}
-
-.zoom-button:hover {
-  background: linear-gradient(180deg, #757575 0%, #616161 100%);
-  transform: translateY(-2px);
-  box-shadow: 
-    0 3px 0 #212121,
-    0 6px 12px rgba(97, 97, 97, 0.5),
-    inset 0 1px rgba(255, 255, 255, 0.4);
-}
-
-.zoom-button:active {
-  background: linear-gradient(180deg, #424242 0%, #212121 100%);
-  transform: translateY(1px);
-  box-shadow: 
-    0 1px 0 #212121,
-    0 2px 4px rgba(97, 97, 97, 0.3),
-    inset 0 1px rgba(255, 255, 255, 0.2);
-}
-
-.zoom-level {
-  font-size: 16px;
-  font-weight: bold;
-  color: white;
-  min-width: 60px;
-  text-align: center;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-
-/* Player count specific sizes */
 .board-space.players-3 {
   width: 24px;
   height: 24px;
@@ -304,7 +258,6 @@
   height: 10px;
 }
 
-/* Adjust peg sizes based on space sizes */
 .players-3 .peg {
   width: 14px;
   height: 14px;
@@ -342,7 +295,6 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-/* Adjust corner label size for different player counts */
 .players-3 .corner-label {
   font-size: 18px;
   width: 28px;
@@ -369,7 +321,20 @@
   height: 22px;
 }
 
-/* Remove the starting circle class entirely */
 .starting-circle {
   display: none;
+}
+
+/* Scale down board for mobile in portrait orientation */
+@media (max-width: 768px) and (orientation: portrait) {
+  .board-container {
+    height: calc(100% - 150px); /* Allow space for controls */
+  }
+}
+
+/* Adjust board for small screens */
+@media (max-width: 480px) {
+  .board-container {
+    width: 100%;
+  }
 } 

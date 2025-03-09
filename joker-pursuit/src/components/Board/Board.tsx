@@ -38,19 +38,76 @@ const Board: React.FC<BoardProps> = ({
   const [transform, setTransform] = useState<BoardTransform>({ scale: 1, translate: { x: 0, y: 0 } });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<Point>({ x: 0, y: 0 });
-  const [boardCenter, setBoardCenter] = useState<Point>({ x: 700, y: 700 }); // Default center point
+  const [boardCenter, setBoardCenter] = useState<Point>({ x: 700, y: 700 }); // Consistent with BoardModel center coordinates
   const boardRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Track if this is the initial mount
+  const isInitialMount = useRef(true);
 
   // State for background circle size
   const [backgroundCircleSize, setBackgroundCircleSize] = useState<number>(1300);
+  
+  // Calculate the ideal initial scale to fit the board nicely in the viewport
+  const calculateIdealScale = useCallback(() => {
+    if (!containerRef.current) return 1;
+    
+    // Get the container dimensions
+    const containerWidth = containerRef.current.clientWidth;
+    const containerHeight = containerRef.current.clientHeight;
+    
+    // The board's base size is 1400px
+    const boardSize = backgroundCircleSize;
+    
+    // Calculate scale to fit with a small margin (95% of available space)
+    const scaleX = (containerWidth * 0.95) / boardSize;
+    const scaleY = (containerHeight * 0.95) / boardSize;
+    
+    // Use the smaller scale to ensure the board fits entirely
+    return Math.min(scaleX, scaleY);
+  }, [backgroundCircleSize]);
+
+  // Center and scale the board appropriately on mount and when board dimensions change
+  useEffect(() => {
+    if (!containerRef.current || !boardRef.current) return;
+    
+    // Calculate ideal scale
+    const idealScale = calculateIdealScale();
+    
+    // Center the board in the container
+    setTransform({
+      scale: 1, // Base scale is 1, actual zoom applied in render
+      translate: { x: 0, y: 0 } // Center position
+    });
+  }, [calculateIdealScale, backgroundCircleSize]);
+  
+  // Helper function to safely get all spaces as an array
+  const getSpacesArray = (spaceCollection: any): BoardSpace[] => {
+    if (!spaceCollection) return [];
+    
+    if (spaceCollection instanceof Map) {
+      // Client-side Map object
+      return Array.from(spaceCollection.values());
+    } else {
+      // Server-side serialized object
+      return Object.values(spaceCollection);
+    }
+  };
   
   // Calculate the true center of the board based on castle positions
   const calculateTrueCenter = useCallback(() => {
     if (!board.allSpaces) return { x: 700, y: 700 }; // Default center
     
-    // Find all castle spaces
-    const castleSpaces = Array.from(board.allSpaces.values())
+    // Find the starting circle which has the red dot at the center
+    const startingSpaces = getSpacesArray(board.allSpaces)
+      .filter(space => space.type === 'starting');
+    
+    if (startingSpaces.length > 0) {
+      // Use the first starting circle as the center (the red dot)
+      return { x: startingSpaces[0].x, y: startingSpaces[0].y };
+    }
+    
+    // Fallback: Find all castle spaces
+    const castleSpaces = getSpacesArray(board.allSpaces)
       .filter(space => space.type === 'castle');
     
     if (castleSpaces.length === 0) return { x: 700, y: 700 }; // Default if no castles
@@ -65,38 +122,76 @@ const Board: React.FC<BoardProps> = ({
     };
     
     return center;
-  }, [board.allSpaces]);
+  }, [board.allSpaces, getSpacesArray]);
 
   // Calculate the size for the background circle
   const calculateBackgroundCircleSize = useCallback(() => {
-    if (!board.allSpaces) return 1300; // Default size
+    if (!board.allSpaces || board.allSpaces.size === 0) {
+      return 800; // Fallback default size
+    }
     
-    // Get all spaces except starting spaces
-    const spaces = Array.from(board.allSpaces.values())
-      .filter(space => space.type !== 'starting');
-    
-    // Find the maximum distance from center to any space
+    // Find the maximum distance from the center to any space
     let maxDistance = 0;
-    const center = boardCenter; // Use the current board center for consistency
+    let spaces: BoardSpace[] = [];
+    
+    // Get all spaces from the board
+    if (board.allSpaces instanceof Map) {
+      spaces = Array.from(board.allSpaces.values());
+    } else {
+      spaces = Object.values(board.allSpaces);
+    }
+    
+    // Filter out starting spaces
+    spaces = spaces.filter(space => space.type !== 'starting');
     
     for (const space of spaces) {
-      // Calculate distance from center to this space
-      const distX = space.x - center.x;
-      const distY = space.y - center.y;
-      const distance = Math.sqrt(distX * distX + distY * distY);
+      if (!space.x || !space.y) continue;
       
-      if (distance > maxDistance) {
-        maxDistance = distance;
+      const dx = space.x - boardCenter.x;
+      const dy = space.y - boardCenter.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      // Add the space size to account for the radius
+      const totalDistance = distance + 30; // 30px is approx half the space size
+      
+      if (totalDistance > maxDistance) {
+        maxDistance = totalDistance;
       }
     }
     
-    // Double the max distance for diameter and add a small margin
-    // The margin is just enough to ensure the slots don't touch the edge
-    const margin = 40; // Reduced margin for tighter fit
-    const diameter = (maxDistance * 2) + margin;
+    // Make the diameter twice the max distance plus a small margin
+    const diameter = maxDistance * 2 + 60; // Add 60px margin (30px on each side)
     
     return diameter;
   }, [board.allSpaces, boardCenter]);
+
+  // Add the centerBoard function that was missing
+  const centerBoard = useCallback(() => {
+    if (containerRef.current && boardRef.current) {
+      const container = containerRef.current;
+      const board = boardRef.current;
+      
+      // Reset transform to initial centered state
+      setTransform({
+        scale: 1,
+        translate: { x: 0, y: 0 }
+      });
+
+      // Ensure the board container takes up the full viewport height minus the controls
+      container.style.height = 'calc(100vh - 120px)'; // Adjust based on your controls height
+      
+      // Explicitly set the board position to center it
+      board.style.left = '50%';
+      board.style.top = '50%';
+      board.style.transform = `translate(-50%, -50%) scale(${zoomLevel})`;
+      
+      // Stop any ongoing dragging
+      setIsDragging(false);
+      
+      // Force a reflow to ensure dimensions are updated
+      void container.offsetHeight;
+    }
+  }, [zoomLevel]);
 
   // Update board center when spaces change
   useEffect(() => {
@@ -113,63 +208,29 @@ const Board: React.FC<BoardProps> = ({
     setBackgroundCircleSize(newSize);
   }, [boardCenter, calculateBackgroundCircleSize, board.sections.length]);
 
-  // Center the board on initial load and when zoom changes
+  // Center the board only on initial load
   useEffect(() => {
-    if (containerRef.current && boardRef.current) {
-      const container = containerRef.current;
-      const board = boardRef.current;
-      
-      // Reset transform to initial centered state
-      setTransform({
-        scale: 1,
-        translate: { x: 0, y: 0 }
-      });
-
-      // Ensure the board container takes up the full viewport height minus the controls
-      container.style.height = 'calc(100vh - 120px)'; // Adjust based on your controls height
-      
-      // Force a reflow to ensure dimensions are updated
-      void container.offsetHeight;
+    if (!boardRef.current) return;
+    
+    // Only center the board on initial mount or when explicitly reset
+    if (isInitialMount.current) {
+      centerBoard();
+      isInitialMount.current = false;
     }
-  }, [calculateTrueCenter, zoomLevel, boardCenter]);
+  }, [centerBoard]);
 
-  // Update the board ref style with the zoom level from props
+  // Update the board ref style with the responsive scale factor from props
   useEffect(() => {
-    if (boardRef.current) {
-      const board = boardRef.current;
-      
-      // Apply zoom level while maintaining center focus
-      board.style.transform = `translate(-50%, -50%) scale(${zoomLevel})`;
-      
-      // Ensure the board stays within viewport bounds
-      const container = containerRef.current;
-      if (container) {
-        const containerRect = container.getBoundingClientRect();
-        const boardRect = board.getBoundingClientRect();
-        
-        // Calculate the maximum allowed translation to keep board in view
-        const maxTranslateX = (containerRect.width - boardRect.width) / 2;
-        const maxTranslateY = (containerRect.height - boardRect.height) / 2;
-        
-        // Update transform if needed to keep board in bounds
-        setTransform(prev => ({
-          ...prev,
-          translate: {
-            x: Math.max(Math.min(prev.translate.x, maxTranslateX), -maxTranslateX),
-            y: Math.max(Math.min(prev.translate.y, maxTranslateY), -maxTranslateY)
-          }
-        }));
-      }
-    }
+    if (!boardRef.current) return;
+    
+    const board = boardRef.current;
+    
+    // Important: When zooming, we only update the scale component of the transform
+    // but maintain the current position (left/top CSS properties), which preserves
+    // the user's current view rather than snapping back to center
+    board.style.transform = `translate(-50%, -50%) scale(${zoomLevel})`;
+    board.style.transformOrigin = 'center center';
   }, [zoomLevel]);
-
-  // Handle zooming with focus on the true center
-  const handleZoom = useCallback((delta: number) => {
-    setTransform(prev => {
-      const newScale = Math.max(0.5, Math.min(4, prev.scale + delta));
-      return { ...prev, scale: newScale };
-    });
-  }, []);
 
   // Calculate dynamic board size based on number of players
   const calculateBoardSize = useCallback(() => {
@@ -189,7 +250,7 @@ const Board: React.FC<BoardProps> = ({
 
   // Check for space collisions
   const detectCollisions = useCallback(() => {
-    const spaces = Array.from(board.allSpaces.values());
+    const spaces = getSpacesArray(board.allSpaces);
     const collisions: Array<[BoardSpace, BoardSpace]> = [];
     
     for (let i = 0; i < spaces.length; i++) {
@@ -211,53 +272,127 @@ const Board: React.FC<BoardProps> = ({
     return collisions;
   }, [board.allSpaces]);
 
-  // Handle mouse wheel zoom
-  const handleWheel = useCallback((e: WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const delta = -e.deltaY * 0.005; // Increased for more responsive wheel zooming
-      handleZoom(delta);
-    }
-  }, [handleZoom]);
-
   // Handle mouse events for dragging
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const handleMouseDown = useCallback((e: MouseEvent) => {
     if (e.button !== 0) return; // Only handle left click
     setIsDragging(true);
     setDragStart({ x: e.clientX - transform.translate.x, y: e.clientY - transform.translate.y });
   }, [transform.translate]);
 
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging) return;
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+    if (e.touches.length !== 1) return; // Only handle single touch
+    e.preventDefault(); // Prevent default touch actions
     
+    const touch = e.touches[0];
+    setIsDragging(true);
+    setDragStart({ x: touch.clientX - transform.translate.x, y: touch.clientY - transform.translate.y });
+  }, [transform.translate]);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging || !boardRef.current) return;
+    
+    // Calculate new position
+    const newTranslateX = e.clientX - dragStart.x;
+    const newTranslateY = e.clientY - dragStart.y;
+    
+    // Update the transform state
     setTransform(prev => ({
       ...prev,
       translate: {
-        x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y
+        x: newTranslateX,
+        y: newTranslateY
       }
     }));
-  }, [isDragging, dragStart]);
+    
+    // Directly update the board's style for immediate feedback
+    // ONLY update position (left/top), never touch the transform property during drag
+    const board = boardRef.current;
+    board.style.left = `calc(50% + ${newTranslateX}px)`;
+    board.style.top = `calc(50% + ${newTranslateY}px)`;
+    
+    // DO NOT update the transform property during drag - let the useEffect handle zoom
+  }, [isDragging, dragStart, boardRef]);
+
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (!isDragging || e.touches.length !== 1 || !boardRef.current) return;
+    e.preventDefault(); // Prevent default touch actions like scrolling
+    
+    const touch = e.touches[0];
+    
+    // Calculate new position
+    const newTranslateX = touch.clientX - dragStart.x;
+    const newTranslateY = touch.clientY - dragStart.y;
+    
+    // Update the transform state
+    setTransform(prev => ({
+      ...prev,
+      translate: {
+        x: newTranslateX,
+        y: newTranslateY
+      }
+    }));
+    
+    // Directly update the board's style for immediate feedback
+    // ONLY update position (left/top), never touch the transform property during drag
+    const board = boardRef.current;
+    board.style.left = `calc(50% + ${newTranslateX}px)`;
+    board.style.top = `calc(50% + ${newTranslateY}px)`;
+    
+    // DO NOT update the transform property during drag - let the useEffect handle zoom
+  }, [isDragging, dragStart, boardRef]);
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
   }, []);
 
-  // Add event listeners
+  const handleTouchEnd = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  // Handle mouse and touch events for board container
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    container.addEventListener('wheel', handleWheel, { passive: false });
+    // Create a wrapper for the mousedown handler that can be attached to DOM events
+    const handleMouseDownWrapper = (e: MouseEvent) => {
+      handleMouseDown(e);
+    };
+
+    const handleTouchStartWrapper = (e: TouchEvent) => {
+      handleTouchStart(e);
+    };
+
+    const handleTouchMoveWrapper = (e: TouchEvent) => {
+      handleTouchMove(e);
+    };
+
+    const handleTouchEndWrapper = () => {
+      handleTouchEnd();
+    };
+
+    // Add mouse event listeners
+    container.addEventListener('mousedown', handleMouseDownWrapper);
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-
+    
+    // Add touch event listeners
+    container.addEventListener('touchstart', handleTouchStartWrapper, { passive: false });
+    document.addEventListener('touchmove', handleTouchMoveWrapper, { passive: false });
+    document.addEventListener('touchend', handleTouchEndWrapper);
+    
     return () => {
-      container.removeEventListener('wheel', handleWheel);
+      // Remove mouse event listeners
+      container.removeEventListener('mousedown', handleMouseDownWrapper);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      
+      // Remove touch event listeners
+      container.removeEventListener('touchstart', handleTouchStartWrapper);
+      document.removeEventListener('touchmove', handleTouchMoveWrapper);
+      document.removeEventListener('touchend', handleTouchEndWrapper);
     };
-  }, [handleWheel, handleMouseMove, handleMouseUp]);
+  }, [handleMouseDown, handleMouseMove, handleMouseUp, handleTouchStart, handleTouchMove, handleTouchEnd]);
 
   // Check for collisions and adjust board size on mount and when sections change
   useEffect(() => {
@@ -561,7 +696,7 @@ const Board: React.FC<BoardProps> = ({
     if (entranceSpace.sectionIndex === undefined) return null;
     
     // Find the last castle slot (castle slot 4, which is index 4)
-    const lastCastleSlot = Array.from(board.allSpaces.values()).find(space => 
+    const lastCastleSlot = getSpacesArray(board.allSpaces).find(space => 
       space.sectionIndex === entranceSpace.sectionIndex && 
       space.type === 'castle' && 
       space.index === 4
@@ -725,7 +860,7 @@ const Board: React.FC<BoardProps> = ({
   // Find the starting circle from all spaces
   const findStartingCircle = (): BoardSpace | undefined => {
     if (!board.allSpaces) return undefined;
-    const startingSpaces = Array.from(board.allSpaces.values()).filter(space => 
+    const startingSpaces = getSpacesArray(board.allSpaces).filter(space => 
       space.type === 'starting'
     );
     return startingSpaces[0];
@@ -778,8 +913,18 @@ const Board: React.FC<BoardProps> = ({
   // Get all spaces to render from the board
   const getAllSpaces = (): BoardSpace[] => {
     if (!board.allSpaces) return [];
-    return Array.from(board.allSpaces.values())
-      .filter(space => space.type !== 'starting');
+    
+    // Handle both Map objects and plain JSON objects (from server)
+    let spaces: BoardSpace[];
+    if (board.allSpaces instanceof Map) {
+      // Client-side Map object
+      spaces = getSpacesArray(board.allSpaces);
+    } else {
+      // Server-side serialized object
+      spaces = getSpacesArray(board.allSpaces);
+    }
+    
+    return spaces.filter(space => space.type !== 'starting');
   };
   
   // Render the true center focal point (more visible for debugging)
@@ -790,13 +935,14 @@ const Board: React.FC<BoardProps> = ({
           position: 'absolute',
           left: `${boardCenter.x}px`,
           top: `${boardCenter.y}px`,
-          width: '4px',
-          height: '4px',
-          backgroundColor: 'rgba(255, 0, 0, 0.5)', // More visible red dot for debugging
+          width: '8px',
+          height: '8px',
+          backgroundColor: 'rgba(255, 0, 0, 0.7)', // More visible red dot
           borderRadius: '50%',
           transform: 'translate(-50%, -50%)',
           zIndex: 100,
-          pointerEvents: 'none'
+          pointerEvents: 'none',
+          boxShadow: '0 0 4px rgba(255, 255, 255, 0.9)' // More visible white glow
         }}
       />
     );
@@ -812,7 +958,7 @@ const Board: React.FC<BoardProps> = ({
     if (homeSlot.sectionIndex === undefined) return null;
     
     // Find all home slots in this section
-    const homeSlots = Array.from(board.allSpaces.values()).filter(space => 
+    const homeSlots = getSpacesArray(board.allSpaces).filter(space => 
       space.sectionIndex === homeSlot.sectionIndex && 
       space.type === 'home'
     );
@@ -886,19 +1032,61 @@ const Board: React.FC<BoardProps> = ({
     };
   };
   
+  // Add listener for reset position event from the GameController
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    const container = containerRef.current;
+    
+    const handleResetPosition = () => {
+      // When reset is triggered, center the board
+      if (boardRef.current) {
+        // Reset transform in state
+        setTransform({
+          scale: 1,
+          translate: { x: 0, y: 0 }
+        });
+        
+        // Reset position directly on the DOM elements
+        const board = boardRef.current;
+        board.style.left = '50%';
+        board.style.top = '50%';
+        board.style.transform = `translate(-50%, -50%) scale(${zoomLevel})`;
+      }
+      
+      // Force any dragging to stop
+      setIsDragging(false);
+    };
+    
+    // Only listen for explicit reset position events
+    container.addEventListener('resetposition', handleResetPosition);
+    
+    return () => {
+      container.removeEventListener('resetposition', handleResetPosition);
+    };
+  }, [zoomLevel]);
+
   return (
     <div 
       ref={containerRef}
       className={`board-container ${isDragging ? 'dragging' : ''}`}
-      onMouseDown={handleMouseDown}
+      style={{
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+        overflow: 'hidden'
+      }}
     >
       <div 
         ref={boardRef}
         className="board"
         style={{
-          transform: `translate(-50%, -50%) scale(${transform.scale})`,
+          // Apply scale only, position is handled via left/top
+          transform: `translate(-50%, -50%) scale(${zoomLevel})`,
           left: `calc(50% + ${transform.translate.x}px)`,
-          top: `calc(50% + ${transform.translate.y}px)`
+          top: `calc(50% + ${transform.translate.y}px)`,
+          transformOrigin: 'center center', // Ensure zooming happens around the center
+          position: 'absolute'
         }}
       >
         {/* Large white background circle - centered precisely at the board center point */}
@@ -910,13 +1098,18 @@ const Board: React.FC<BoardProps> = ({
             left: `${boardCenter.x}px`,
             top: `${boardCenter.y}px`,
             transform: 'translate(-50%, -50%)',
-            border: '6px solid black',
+            border: '2px solid rgba(0, 0, 0, 0.3)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15), inset 0 1px 3px rgba(255, 255, 255, 0.8)',
             backgroundColor: '#FFFFFF'
           }}
         />
         
         {/* Render all spaces (excluding starting circle) */}
-        {getAllSpaces().map(renderSpace)}
+        {getAllSpaces().map(space => (
+          <React.Fragment key={space.id}>
+            {renderSpace(space)}
+          </React.Fragment>
+        ))}
         
         {/* Render starting circle */}
         {renderStartingCircle()}

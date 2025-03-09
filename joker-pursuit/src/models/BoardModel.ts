@@ -62,9 +62,9 @@ const calculateBoardDimensions = (totalPlayers: number) => {
   // Use the larger of base radius or required radius
   const radius = Math.max(baseRadius, requiredRadius);
   
-  // Center coordinates scale with radius but maintain minimum size
-  const centerX = Math.max(700, radius * 2.5);
-  const centerY = Math.max(400, radius * 1.5);
+  // Use consistent center coordinates to properly center the board
+  const centerX = 700;
+  const centerY = 700;
   
   return { radius, centerX, centerY };
 };

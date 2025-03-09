@@ -4,6 +4,7 @@
   justify-content: center;
   gap: 10px;
   margin: 15px 0;
+  background: transparent;
 }
 
 .playing-card {
@@ -15,18 +16,19 @@
   padding: 5px;
   cursor: pointer;
   position: relative;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
   transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+  z-index: 5;
 }
 
 .playing-card:hover:not(.disabled) {
   transform: translateY(-10px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
 }
 
 .playing-card.selected {
   transform: translateY(-15px);
-  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.5);
   border: 2px solid gold;
 }
 
@@ -122,4 +124,81 @@
   background-color: #1e88e5;
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(33, 150, 243, 0.4);
+}
+
+/* Media query for mobile devices */
+@media (max-width: 480px) {
+  .playing-card {
+    width: 60px;
+    height: 90px;
+    padding: 3px;
+  }
+  
+  .card-rank {
+    font-size: 1rem;
+  }
+  
+  .card-suit {
+    font-size: 1rem;
+  }
+  
+  .card-center {
+    font-size: 1.5rem;
+  }
+  
+  .card-center.joker {
+    font-size: 1rem;
+  }
+  
+  .playing-card:hover:not(.disabled) {
+    transform: translateY(-5px);
+  }
+  
+  .playing-card.selected {
+    transform: translateY(-8px);
+  }
+}
+
+.card-back {
+  height: 100%;
+  width: 100%;
+  border-radius: 5px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-back-pattern {
+  height: 80%;
+  width: 80%;
+  border-radius: 5px;
+  background-image: repeating-linear-gradient(
+    45deg, 
+    rgba(255, 255, 255, 0.15), 
+    rgba(255, 255, 255, 0.15) 5px, 
+    rgba(255, 255, 255, 0) 5px, 
+    rgba(255, 255, 255, 0) 10px
+  );
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.card-back-circle {
+  width: 60%;
+  height: 60%;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+}
+
+.hidden-card {
+  pointer-events: none;
+}
+
+.hidden-card:hover {
+  transform: none;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 } 
