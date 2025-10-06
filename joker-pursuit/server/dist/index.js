@@ -3,14 +3,63 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
 const express_1 = __importDefault(require("express"));
 const http_1 = __importDefault(require("http"));
 const socket_io_1 = require("socket.io");
 const cors_1 = __importDefault(require("cors"));
+const envPath = path_1.default.resolve(__dirname, '..', '.env');
+if (fs_1.default.existsSync(envPath)) {
+    const envContent = fs_1.default.readFileSync(envPath, 'utf-8');
+    envContent.split(/\r?\n/).forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) {
+            return;
+        }
+        const [key, ...rest] = trimmed.split('=');
+        if (!key) {
+            return;
+        }
+        const value = rest.join('=').trim();
+        if (!(key in process.env)) {
+            process.env[key] = value;
+        }
+    });
+}
 const crypto_1 = require("crypto");
+// Helper to serialize players for client responses
+function serializePlayers(players) {
+    return players.map(p => ({ id: p.id, name: p.name, color: p.color }));
+}
+// Resolve allowed origins for CORS/Socket.IO
+const defaultOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+    'http://localhost:5173'
+];
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+const effectiveOrigins = allowedOrigins.length > 0 ? allowedOrigins : defaultOrigins;
+const allowsAllOrigins = effectiveOrigins.includes('*');
+const corsOptions = {
+    origin: (origin, callback) => {
+        if (allowsAllOrigins || !origin || effectiveOrigins.includes(origin)) {
+            callback(null, true);
+            return;
+        }
+        callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
+    methods: ['GET', 'POST'],
+    credentials: true
+};
+console.log('CORS allowed origins:', effectiveOrigins);
 // Create Express app
 const app = (0, express_1.default)();
-app.use((0, cors_1.default)());
+app.use((0, cors_1.default)(corsOptions));
 app.use(express_1.default.json());
 // Add a simple endpoint for testing
 app.get('/', (req, res) => {
@@ -21,15 +70,21 @@ const server = http_1.default.createServer(app);
 // Create Socket.IO server with simplified options
 const io = new socket_io_1.Server(server, {
     cors: {
-        origin: '*', // Allow all origins in development
+        origin: (origin, callback) => {
+            if (allowsAllOrigins || !origin || effectiveOrigins.includes(origin)) {
+                callback(null, true);
+                return;
+            }
+            callback(new Error(`Origin ${origin} not allowed by Socket.IO CORS`));
+        },
         methods: ['GET', 'POST'],
-        credentials: false
+        credentials: true
     },
     pingTimeout: 60000,
     pingInterval: 25000
 });
 // Store active game rooms
-const rooms = {};
+const rooms = new Map();
 // Generate a unique, simple 6-character code for rooms
 function generateRoomCode() {
     return (0, crypto_1.randomBytes)(3).toString('hex').toUpperCase();
@@ -62,10 +117,16 @@ io.on('connection', (socket) => {
                 isGameStarted: false
             };
             // Store room and join socket room
-            rooms[roomId] = room;
+            rooms.set(roomId, room);
             socket.join(roomId);
             console.log(`Room created: ${roomId} with code: ${roomCode}`);
-            callback({ success: true, roomId, roomCode, playerId: player.id });
+            callback({
+                success: true,
+                roomId,
+                roomCode,
+                playerId: player.id,
+                players: serializePlayers(room.players)
+            });
         }
         catch (error) {
             console.error('Error creating room:', error);
@@ -75,50 +136,55 @@ io.on('connection', (socket) => {
     // Join an existing game room
     socket.on('join-room', (roomCode, playerName, callback) => {
         try {
-            // Find room with matching code (case insensitive)
-            const roomId = Object.keys(rooms).find(id => rooms[id].code.toLowerCase() === roomCode.toLowerCase());
-            if (!roomId) {
-                return callback({
-                    success: false,
-                    error: 'Room not found. Please check the room code and try again.'
+            // Check if room code already exists
+            const roomId = Array.from(rooms.keys()).find(id => rooms.get(id)?.code.toLowerCase() === roomCode.toLowerCase());
+            if (roomId) {
+                // Room exists, try to join
+                const room = rooms.get(roomId);
+                if (!room) {
+                    console.error(`Room ${roomId} not found for joining`);
+                    return callback({ success: false, error: 'Room not found' });
+                }
+                // Check if game already started
+                if (room.isGameStarted) {
+                    return callback({
+                        success: false,
+                        error: 'Game has already started. You cannot join now.'
+                    });
+                }
+                // Check if player limit reached (8 players max)
+                if (room.players.length >= 8) {
+                    return callback({
+                        success: false,
+                        error: 'Room is full. Maximum 8 players allowed.'
+                    });
+                }
+                // Create new player
+                const player = {
+                    id: `player-${Date.now()}`,
+                    name: playerName,
+                    color: '', // Will be set during game setup
+                    socketId: socket.id
+                };
+                // Add player to room
+                room.players.push(player);
+                socket.join(roomId);
+                // Notify all players in the room that someone joined
+                io.to(roomId).emit('player-joined', {
+                    players: serializePlayers(room.players)
+                });
+                callback({
+                    success: true,
+                    roomId,
+                    roomCode: room.code,
+                    playerId: player.id,
+                    players: serializePlayers(room.players)
                 });
             }
-            const room = rooms[roomId];
-            // Check if game already started
-            if (room.isGameStarted) {
-                return callback({
-                    success: false,
-                    error: 'Game has already started. You cannot join now.'
-                });
+            else {
+                console.error(`Room with code ${roomCode} not found`);
+                callback({ success: false, error: 'Room not found' });
             }
-            // Check if player limit reached (8 players max)
-            if (room.players.length >= 8) {
-                return callback({
-                    success: false,
-                    error: 'Room is full. Maximum 8 players allowed.'
-                });
-            }
-            // Create new player
-            const player = {
-                id: `player-${Date.now()}`,
-                name: playerName,
-                color: '', // Will be set during game setup
-                socketId: socket.id
-            };
-            // Add player to room
-            room.players.push(player);
-            socket.join(roomId);
-            // Notify all players in the room that someone joined
-            io.to(roomId).emit('player-joined', {
-                players: room.players.map(p => ({ id: p.id, name: p.name, color: p.color }))
-            });
-            callback({
-                success: true,
-                roomId,
-                roomCode: room.code,
-                playerId: player.id,
-                players: room.players.map(p => ({ id: p.id, name: p.name, color: p.color }))
-            });
         }
         catch (error) {
             console.error('Error joining room:', error);
@@ -128,9 +194,11 @@ io.on('connection', (socket) => {
     // Start game
     socket.on('start-game', (roomId, callback) => {
         try {
-            const room = rooms[roomId];
+            const room = rooms.get(roomId);
             if (!room) {
-                return callback({ success: false, error: 'Room not found' });
+                console.error(`Room ${roomId} not found for game start`);
+                callback({ success: false, error: 'Room not found' });
+                return;
             }
             // Check if user is the host
             if (room.host !== socket.id) {
@@ -139,7 +207,7 @@ io.on('connection', (socket) => {
             room.isGameStarted = true;
             // Notify all players that game is starting
             io.to(roomId).emit('game-started', {
-                players: room.players.map(p => ({ id: p.id, name: p.name, color: p.color }))
+                players: serializePlayers(room.players)
             });
             callback({ success: true });
         }
@@ -153,9 +221,11 @@ io.on('connection', (socket) => {
         try {
             const { roomId, playerId, color } = data;
             console.log(`Updating player color: ${playerId} to ${color} in room ${roomId}`);
-            const room = rooms[roomId];
+            const room = rooms.get(roomId);
             if (!room) {
-                return callback({ success: false, error: 'Room not found' });
+                console.error(`Room ${roomId} not found for color update`);
+                callback({ success: false, error: 'Room not found' });
+                return;
             }
             // Find player and update color
             const player = room.players.find(p => p.id === playerId);
@@ -166,7 +236,7 @@ io.on('connection', (socket) => {
                 // Return success with updated players array
                 callback({
                     success: true,
-                    players: room.players.map(p => ({ id: p.id, name: p.name, color: p.color }))
+                    players: serializePlayers(room.players)
                 });
             }
             else {
@@ -182,7 +252,7 @@ io.on('connection', (socket) => {
     socket.on('update-game-state', ({ roomId, gameState }) => {
         try {
             console.log(`Updating game state for room ${roomId}`);
-            const room = rooms[roomId];
+            const room = rooms.get(roomId);
             if (room) {
                 // Store the updated game state
                 room.gameState = gameState;
@@ -208,146 +278,84 @@ io.on('connection', (socket) => {
     socket.on('shuffle-cards', ({ roomId, deckState }) => {
         try {
             console.log(`Shuffling cards for room ${roomId}`);
-            const room = rooms[roomId];
-            if (room) {
-                // Update room game state with new deck
-                if (!room.gameState) {
-                    room.gameState = {};
-                }
-                // Make sure we have player info (crucial, this is what was missing)
-                if (!room.gameState.players || room.gameState.players.length === 0) {
-                    console.log('Players array missing or empty in game state, adding from room players');
-                    room.gameState.players = room.players.map(p => ({
-                        id: p.id,
-                        name: p.name,
-                        color: p.color,
-                        hand: [],
-                        // Initialize 5 pegs for each player with proper IDs
-                        pegs: [
-                            `${p.id}-peg-1`,
-                            `${p.id}-peg-2`,
-                            `${p.id}-peg-3`,
-                            `${p.id}-peg-4`,
-                            `${p.id}-peg-5`
-                        ],
-                        isComplete: false,
-                        teamId: 0
-                    }));
-                }
-                // Merge deck state with game state
-                room.gameState = {
-                    ...room.gameState,
-                    ...deckState,
-                    phase: 'playing' // Set to playing phase
-                };
-                // Make sure pegs are properly initialized in the right places
-                if (room.gameState.board && room.gameState.players) {
-                    console.log('Properly placing pegs on board in starting position');
-                    // Enhanced debug logging to see board structure
-                    try {
-                        console.log(`Board spaces count: ${typeof room.gameState.board.allSpaces === 'object'
-                            ? Object.keys(room.gameState.board.allSpaces).length
-                            : room.gameState.board.allSpaces.size}`);
-                        // Log a few space IDs to help debugging
-                        const spaceArray = typeof room.gameState.board.allSpaces === 'object'
-                            ? Object.values(room.gameState.board.allSpaces)
-                            : Array.from(room.gameState.board.allSpaces.values());
-                        console.log(`Space sample IDs: ${spaceArray.slice(0, 5).map((s) => s.id).join(', ')}`);
-                        console.log(`Space types: ${spaceArray.slice(0, 5).map((s) => s.type).join(', ')}`);
-                        // Find the starting space with enhanced logging and fallbacks
-                        let startingSpace;
-                        let allBoardSpaces = [];
-                        if (room.gameState.board.allSpaces instanceof Map) {
-                            allBoardSpaces = Array.from(room.gameState.board.allSpaces.values());
-                        }
-                        else if (typeof room.gameState.board.allSpaces === 'object') {
-                            allBoardSpaces = Object.values(room.gameState.board.allSpaces);
-                        }
-                        // 1. First try to find section1_starting (most reliable ID)
-                        startingSpace = allBoardSpaces.find((space) => space.id === 'section1_starting');
-                        // 2. If not found, try to find any starting space by ID pattern
-                        if (!startingSpace) {
-                            startingSpace = allBoardSpaces.find((space) => space.id && space.id.includes('_starting'));
-                        }
-                        // 3. If still not found, look by type
-                        if (!startingSpace) {
-                            startingSpace = allBoardSpaces.find((space) => space.type === 'starting');
-                        }
-                        // 4. Fallback: if no starting space found, create one
-                        if (!startingSpace) {
-                            console.log('No starting space found, creating a fallback starting space');
-                            // Find the first section to get its dimensions
-                            const firstSection = room.gameState.board.sections && room.gameState.board.sections[0];
-                            // Create a new starting space in the center
-                            startingSpace = {
-                                id: 'fallback_starting',
-                                type: 'starting',
-                                x: 700, // Default center X
-                                y: 700, // Default center Y
-                                index: -1,
-                                label: 'Start',
-                                pegs: [],
-                                sectionIndex: 0
-                            };
-                            // Add this starting space to the board
-                            if (room.gameState.board.allSpaces instanceof Map) {
-                                room.gameState.board.allSpaces.set(startingSpace.id, startingSpace);
-                            }
-                            else if (typeof room.gameState.board.allSpaces === 'object') {
-                                room.gameState.board.allSpaces[startingSpace.id] = startingSpace;
-                            }
-                            console.log('Created fallback starting space:', startingSpace);
-                        }
-                        // Place all pegs in the starting space
-                        if (startingSpace) {
-                            console.log('Found starting space, adding all pegs');
-                            if (!Array.isArray(startingSpace.pegs)) {
-                                startingSpace.pegs = []; // Ensure pegs array exists
-                            }
-                            else {
-                                startingSpace.pegs = []; // Clear existing pegs
-                            }
-                            // Log all pegs we're adding
-                            const allPegs = [];
-                            room.gameState.players.forEach((player) => {
-                                console.log(`Adding ${player.pegs.length} pegs for player ${player.name} (${player.id})`);
-                                allPegs.push(...player.pegs);
-                            });
-                            startingSpace.pegs = allPegs;
-                            console.log(`Total pegs placed in starting circle: ${startingSpace.pegs.length}`);
-                            // For debug, log the first few pegs
-                            if (startingSpace.pegs.length > 0) {
-                                console.log(`Sample pegs: ${startingSpace.pegs.slice(0, 3).join(', ')}`);
-                            }
-                        }
-                        else {
-                            console.log('No starting space found in board, pegs will not be visible');
+            const room = rooms.get(roomId);
+            if (!room) {
+                console.error(`Room ${roomId} not found for shuffling cards`);
+                return;
+            }
+            // Ensure the request is from the host
+            if (socket.id !== room.host) {
+                console.error(`Non-host player ${socket.id} trying to shuffle cards`);
+                return;
+            }
+            console.log('Properly placing pegs on board in starting position');
+            // Use the provided game state from the client as our initial state
+            room.gameState = {
+                ...deckState,
+                phase: deckState?.phase ?? 'playing'
+            };
+            // Validate the game state has necessary components
+            let startingSpace = null;
+            if (room.gameState.board && room.gameState.board.allSpaces) {
+                console.log(`Board has ${room.gameState.board.sections?.length} sections and ${room.gameState.board.allSpaces instanceof Map ? room.gameState.board.allSpaces.size : 0} spaces`);
+                // Check for a starting space
+                if (room.gameState.board.allSpaces instanceof Map) {
+                    for (const [id, space] of room.gameState.board.allSpaces.entries()) {
+                        if (space.type === 'starting' || id.includes('_starting')) {
+                            startingSpace = space;
+                            break;
                         }
                     }
-                    catch (error) {
-                        console.error('Error logging board structure:', error);
+                }
+                else {
+                    for (const id in room.gameState.board.allSpaces) {
+                        const space = room.gameState.board.allSpaces[id];
+                        if (space.type === 'starting' || id.includes('_starting')) {
+                            startingSpace = space;
+                            break;
+                        }
                     }
                 }
-                // Log current player
-                const currentPlayerIndex = room.gameState.currentPlayerIndex || 0;
-                const currentPlayer = room.gameState.players[currentPlayerIndex];
-                console.log(`Current player after shuffle: ${currentPlayer?.name} (${currentPlayer?.id})`);
-                // Broadcast to all players
-                console.log(`Emitting shuffled-cards event with game state: { players: ${room.gameState.players.length}, currentPlayerIndex: ${currentPlayerIndex} }`);
-                io.to(roomId).emit('shuffled-cards', room.gameState);
+                if (startingSpace) {
+                    console.log(`Starting space found with ${startingSpace.pegs?.length || 0} pegs`);
+                }
+                else {
+                    console.log('No starting space found in board');
+                }
             }
             else {
-                console.error(`Room ${roomId} not found for shuffle`);
+                console.error('Board or allSpaces is missing in game state');
             }
+            // Log the player setup
+            console.log(`Game starting with ${room.gameState.players.length} players`);
+            room.gameState.players.forEach((player, index) => {
+                console.log(`Player ${index + 1}: ${player.name} (${player.id}) with color ${player.color}`);
+                console.log(`  Pegs: ${player.pegs?.length || 0}`);
+                console.log(`  Cards: ${player.hand?.length || 0}`);
+            });
+            // Set the current player to the first player
+            room.gameState.currentPlayerIndex = 0;
+            // Log the current player
+            const currentPlayer = room.gameState.players[room.gameState.currentPlayerIndex];
+            console.log(`Current player after shuffle: ${currentPlayer.name} (${currentPlayer.id})`);
+            // Broadcast the game state to all clients with extra details
+            io.to(roomId).emit('shuffled-cards', {
+                gameState: room.gameState,
+                players: room.gameState.players.length,
+                boardSpaces: room.gameState.board?.allSpaces instanceof Map ? room.gameState.board.allSpaces.size : 0,
+                hasStartingSpace: !!startingSpace
+            });
+            // Also send a game state update to ensure all clients have the latest state
+            io.to(roomId).emit('game-state-updated', room.gameState);
         }
         catch (error) {
-            console.error('Error handling shuffle cards:', error);
+            console.error('Error shuffling cards:', error);
         }
     });
     // Handle game phase change
     socket.on('change-game-phase', ({ roomId, phase }) => {
         try {
-            const room = rooms[roomId];
+            const room = rooms.get(roomId);
             if (!room) {
                 console.error('Room not found for phase change:', roomId);
                 return;
@@ -366,41 +374,96 @@ io.on('connection', (socket) => {
         }
     });
     // Handle player moves
-    socket.on('player-move', ({ roomId, playerId, moveData }) => {
+    socket.on('player-move', (data, callback) => {
+        const { roomId, moveData } = data;
+        console.log(`Player ${socket.id} made a move in room ${roomId}`);
+        const room = rooms.get(roomId);
+        if (!room) {
+            console.error(`Room ${roomId} not found`);
+            callback({ success: false, error: 'Room not found' });
+            return;
+        }
+        if (!room.gameState || !room.gameState.players) {
+            console.error(`Room ${roomId} has no active game state`);
+            callback({ success: false, error: 'Game not started' });
+            return;
+        }
+        const player = room.players.find(p => p.socketId === socket.id);
+        if (!player) {
+            console.error(`Player not found in room ${roomId}`);
+            callback({ success: false, error: 'Player not found' });
+            return;
+        }
+        const currentPlayer = room.gameState.players[room.gameState.currentPlayerIndex];
+        const movePlayerId = moveData?.playerId ?? player.id;
+        if (!currentPlayer || (currentPlayer.id !== player.id && currentPlayer.id !== movePlayerId)) {
+            console.error(`Not ${player.name}'s turn`);
+            callback({ success: false, error: 'Not your turn' });
+            return;
+        }
         try {
-            console.log(`Player ${playerId} made a move in room ${roomId}`);
-            const room = rooms[roomId];
-            if (room) {
-                // Store the updated game state from the move
-                if (moveData.gameState) {
-                    room.gameState = moveData.gameState;
-                    console.log(`Broadcasting player move to all players in room ${roomId}`);
-                    console.log(`Current player after move: ${room.gameState.players[room.gameState.currentPlayerIndex]?.name}`);
-                    // Broadcast to ALL players in the room using same pattern as color selection
-                    io.to(roomId).emit('player-move', {
-                        playerId,
-                        moveData,
-                        gameState: room.gameState
-                    });
-                }
-                else {
-                    console.error('Move data is missing game state');
-                }
-            }
-            else {
-                console.error(`Room ${roomId} not found for player move`);
-            }
+            const playerMoveData = {
+                ...moveData,
+                playerId: player.id
+            };
+            console.log('Move details:', {
+                playerId: player.id,
+                playerName: player.name,
+                cardId: moveData?.cardId,
+                pegId: moveData?.pegId,
+                fromPosition: moveData?.fromPosition,
+                toPosition: moveData?.toPosition
+            });
+            io.to(roomId).emit('player-move', {
+                playerId: player.id,
+                moveData: playerMoveData
+            });
+            room.gameState.currentPlayerIndex = (room.gameState.currentPlayerIndex + 1) % room.gameState.players.length;
+            const nextPlayer = room.gameState.players[room.gameState.currentPlayerIndex];
+            console.log(`Turn advanced to player ${nextPlayer?.name}`);
+            io.to(roomId).emit('game-state-updated', room.gameState);
+            callback({ success: true });
         }
-        catch (error) {
-            console.error('Error handling player move:', error);
+        catch (err) {
+            console.error('Error processing move:', err);
+            callback({ success: false, error: 'Error processing move' });
         }
+    });
+    // Handle players intentionally leaving a room
+    socket.on('leave-room', (roomId) => {
+        console.log(`Socket ${socket.id} requested to leave room ${roomId}`);
+        const room = rooms.get(roomId);
+        if (!room) {
+            return;
+        }
+        const playerIndex = room.players.findIndex(p => p.socketId === socket.id);
+        if (playerIndex === -1) {
+            return;
+        }
+        const [player] = room.players.splice(playerIndex, 1);
+        socket.leave(roomId);
+        if (room.players.length === 0) {
+            rooms.delete(roomId);
+            return;
+        }
+        if (room.host === socket.id) {
+            room.host = room.players[0].socketId;
+            io.to(roomId).emit('new-host', {
+                newHostId: room.players[0].id,
+                newHostName: room.players[0].name
+            });
+        }
+        io.to(roomId).emit('player-left', {
+            playerId: player.id,
+            playerName: player.name,
+            players: serializePlayers(room.players)
+        });
     });
     // Handle disconnection
     socket.on('disconnect', () => {
         console.log(`User disconnected: ${socket.id}`);
         // Find rooms where this socket is a player
-        Object.keys(rooms).forEach(roomId => {
-            const room = rooms[roomId];
+        rooms.forEach((room, roomId) => {
             const playerIndex = room.players.findIndex(p => p.socketId === socket.id);
             if (playerIndex !== -1) {
                 // Remove player from room
@@ -418,15 +481,14 @@ io.on('connection', (socket) => {
                     }
                     else {
                         // Delete room if no players left
-                        delete rooms[roomId];
-                        return;
+                        rooms.delete(roomId);
                     }
                 }
                 // Notify remaining players
                 io.to(roomId).emit('player-left', {
                     playerId: player.id,
                     playerName: player.name,
-                    players: room.players.map(p => ({ id: p.id, name: p.name, color: p.color }))
+                    players: serializePlayers(room.players)
                 });
             }
         });

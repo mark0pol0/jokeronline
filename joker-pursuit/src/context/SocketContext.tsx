@@ -24,13 +24,35 @@ interface SocketProviderProps {
   children: ReactNode;
 }
 
+const resolveSocketUrl = () => {
+  const envUrl = process.env.REACT_APP_SOCKET_URL?.trim();
+  if (envUrl) {
+    return envUrl;
+  }
+
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:8080';
+    }
+
+    const inferred = window.location.origin;
+    console.warn(
+      '[socket] Falling back to current origin for Socket.IO connection. Set REACT_APP_SOCKET_URL to your backend URL for production deployments.',
+      { inferred }
+    );
+    return inferred;
+  }
+
+  return 'http://localhost:8080';
+};
+
 export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   const [socket, setSocket] = useState<ReturnType<typeof socketIOClient> | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   // Initialize socket connection when component mounts
   useEffect(() => {
-    const SOCKET_URL = 'http://localhost:8080';
+    const SOCKET_URL = resolveSocketUrl();
     console.log('Creating socket connection to:', SOCKET_URL);
     
     // Create socket instance
