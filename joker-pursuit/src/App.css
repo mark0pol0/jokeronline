@@ -1,12 +1,33 @@
 .App {
   text-align: center;
   font-family: Arial, sans-serif;
-  width: 100vw;
-  height: 100vh;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: clamp(12px, 3vw, 32px) clamp(12px, 4vw, 48px);
+  overflow-x: hidden;
+  overflow-y: visible;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: clamp(16px, 3vw, 32px);
+  background: radial-gradient(circle at top, rgba(255, 255, 255, 0.6), transparent 55%),
+    linear-gradient(135deg, #240000 0%, #5c0000 60%, #120101 100%);
+  background-attachment: fixed;
+}
+
+@media (max-width: 768px) {
+  .App {
+    padding: clamp(10px, 5vw, 24px);
+    gap: clamp(12px, 4vw, 24px);
+  }
+}
+
+@media (max-width: 520px) {
+  .App {
+    padding: clamp(8px, 6vw, 18px);
+  }
 }
 
 .App-logo {

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import socketIOClient from 'socket.io-client';
 import { useSocket } from './SocketContext';
+import type { SocketInstance } from './SocketContext';
 
 // Types for multiplayer state
 export interface MultiplayerPlayer {
@@ -46,7 +46,7 @@ interface MultiplayerContextType {
   players: MultiplayerPlayer[];
   isGameStarted: boolean;
   error: string | null;
-  socket: ReturnType<typeof socketIOClient> | null;
+  socket: SocketInstance | null;
   
   // Actions
   setOnlineMode: (isOnline: boolean) => void;
@@ -95,6 +95,25 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
   const [error, setError] = useState<string | null>(null);
 
   const clearError = () => setError(null);
+
+  useEffect(() => {
+    if (!isConnected) {
+      setError((current) => current ?? 'Not connected to server. Please verify the Socket.IO backend URL.');
+    } else {
+      setError((current) => (current && current.startsWith('Not connected to server') ? null : current));
+    }
+  }, [isConnected]);
+
+  useEffect(() => {
+    if (!socket) {
+      setRoomId(null);
+      setRoomCode(null);
+      setPlayerId(null);
+      setPlayers([]);
+      setIsHost(false);
+      setIsGameStarted(false);
+    }
+  }, [socket]);
   
   // Set up socket event listeners
   useEffect(() => {
@@ -164,7 +183,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
     }
     
     if (!isConnected) {
-      setError('Not connected to server. Please check your connection and try again.');
+      setError('Not connected to server. Please verify the Socket.IO backend URL and try again.');
       return Promise.reject(new Error('Not connected to server'));
     }
     
@@ -207,7 +226,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
     }
     
     if (!isConnected) {
-      setError('Not connected to server. Please check your connection and try again.');
+      setError('Not connected to server. Please verify the Socket.IO backend URL and try again.');
       return Promise.reject(new Error('Not connected to server'));
     }
     
