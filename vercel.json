@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "installCommand": "npm install --prefix joker-pursuit",
+  "buildCommand": "npm run build --prefix joker-pursuit",
+  "outputDirectory": "joker-pursuit/build",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

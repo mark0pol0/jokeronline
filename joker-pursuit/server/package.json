@@ -5,8 +5,9 @@
   "main": "dist/index.js",
   "scripts": {
     "start": "node dist/index.js",
-    "dev": "nodemon src/index.ts",
+    "dev": "nodemon --watch src --exec \"ts-node src/index.ts\"",
     "build": "tsc",
+    "deploy:fly": "flyctl deploy --config fly.toml",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {

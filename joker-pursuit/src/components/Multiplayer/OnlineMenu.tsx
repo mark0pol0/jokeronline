@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useMultiplayer } from '../../context/MultiplayerContext';
 import CreateGameRoom from './CreateGameRoom';
 import JoinGameRoom from './JoinGameRoom';
+import ConnectionSettings from './ConnectionSettings';
 import './MultiplayerStyles.css';
 
 interface OnlineMenuProps {
@@ -30,47 +31,51 @@ const OnlineMenu: React.FC<OnlineMenuProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="multiplayer-container">
-      {menuState === OnlineMenuState.MAIN && (
-        <>
-          <h2>Play Online</h2>
-          <div className="online-menu">
-            <div className="button-group">
-              <button 
-                onClick={() => setMenuState(OnlineMenuState.CREATE)}
-                className="skeuomorphic-button primary-button"
-              >
-                <span className="button-text">Host a Game</span>
-                <div className="button-shine"></div>
-              </button>
-              
-              <button 
-                onClick={() => setMenuState(OnlineMenuState.JOIN)}
-                className="skeuomorphic-button primary-button"
-              >
-                <span className="button-text">Join a Game</span>
-                <div className="button-shine"></div>
-              </button>
-              
-              <button 
-                onClick={onBack}
-                className="skeuomorphic-button secondary-button"
-              >
-                <span className="button-text">Back to Menu</span>
-                <div className="button-shine"></div>
-              </button>
+    <div className="multiplayer-page">
+      <div className="multiplayer-container">
+        <ConnectionSettings />
+
+        {menuState === OnlineMenuState.MAIN && (
+          <section className="multiplayer-panel">
+            <h2>Play Online</h2>
+            <div className="online-menu">
+              <div className="button-group">
+                <button
+                  onClick={() => setMenuState(OnlineMenuState.CREATE)}
+                  className="skeuomorphic-button primary-button"
+                >
+                  <span className="button-text">Host a Game</span>
+                  <div className="button-shine"></div>
+                </button>
+
+                <button
+                  onClick={() => setMenuState(OnlineMenuState.JOIN)}
+                  className="skeuomorphic-button primary-button"
+                >
+                  <span className="button-text">Join a Game</span>
+                  <div className="button-shine"></div>
+                </button>
+
+                <button
+                  onClick={onBack}
+                  className="skeuomorphic-button secondary-button"
+                >
+                  <span className="button-text">Back to Menu</span>
+                  <div className="button-shine"></div>
+                </button>
+              </div>
             </div>
-          </div>
-        </>
-      )}
-      
-      {menuState === OnlineMenuState.CREATE && (
-        <CreateGameRoom onBack={handleBack} />
-      )}
-      
-      {menuState === OnlineMenuState.JOIN && (
-        <JoinGameRoom onBack={handleBack} />
-      )}
+          </section>
+        )}
+
+        {menuState === OnlineMenuState.CREATE && (
+          <CreateGameRoom onBack={handleBack} />
+        )}
+
+        {menuState === OnlineMenuState.JOIN && (
+          <JoinGameRoom onBack={handleBack} />
+        )}
+      </div>
     </div>
   );
 };

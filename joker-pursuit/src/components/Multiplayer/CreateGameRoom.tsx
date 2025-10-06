@@ -34,8 +34,8 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="multiplayer-container">
-      <h2>Create Game Room</h2>
+    <section className="multiplayer-panel" aria-labelledby="create-room-title">
+      <h2 id="create-room-title">Create Game Room</h2>
       
       {!roomCode ? (
         <form onSubmit={handleCreateRoom} className="multiplayer-form">
@@ -55,22 +55,22 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
           {error && (
             <div className="error-message">
               <p>{error}</p>
-              <button onClick={clearError} className="clear-error-btn">✕</button>
+              <button type="button" onClick={clearError} className="clear-error-btn">✕</button>
             </div>
           )}
-          
+
           <div className="button-group">
-            <button 
-              type="button" 
+            <button
+              type="button"
               onClick={onBack}
               className="skeuomorphic-button secondary-button"
             >
               <span className="button-text">Back</span>
               <div className="button-shine"></div>
             </button>
-            
-            <button 
-              type="submit" 
+
+            <button
+              type="submit"
               className="skeuomorphic-button primary-button"
               disabled={isCreating || !playerName.trim()}
             >
@@ -103,7 +103,7 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
           {error && (
             <div className="error-message">
               <p>{error}</p>
-              <button onClick={clearError} className="clear-error-btn">✕</button>
+              <button type="button" onClick={clearError} className="clear-error-btn">✕</button>
             </div>
           )}
           
@@ -137,7 +137,7 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 };
 

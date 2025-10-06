@@ -72,6 +72,55 @@ cd server
 npm start
 ```
 
+### Environment Configuration
+
+Copy the provided `.env.example` files to `.env` and update the variables for your deployment targets:
+
+```
+cp .env.example .env
+cp server/.env.example server/.env
+```
+
+- `REACT_APP_SOCKET_URL` — the public URL of your Socket.IO server. This **must** be set when deploying the client to Vercel or any static host so browsers know where to open the WebSocket connection.
+- `ALLOWED_ORIGINS` — a comma-separated list of origins that are allowed to connect to the Socket.IO server (configure this in `server/.env`). Include your Vercel domain (e.g. `https://your-app.vercel.app`) so the backend accepts production connections.
+
+### Configuring the multiplayer connection
+
+- Use the **Connection Settings** card in the online lobby to update the Socket.IO endpoint without rebuilding the client. Paste the public URL of your hosted server (or a tunnel) and the app will reconnect automatically.
+- The selection is stored in `localStorage`, so a mobile browser will remember your choice between sessions.
+- Connection errors are surfaced directly in the banner so it's obvious when the backend is offline or blocked by CORS.
+
+### Deploying the Socket.IO server on Fly.io (free tier)
+
+This repository now includes a production-ready Dockerfile and `fly.toml`. Fly.io offers a free allowance that comfortably handles casual multiplayer sessions.
+
+1. Install the CLI with `curl -L https://fly.io/install.sh | sh` and run `flyctl auth signup`.
+2. Bootstrap the application (one time):
+   ```bash
+   cd joker-pursuit/server
+   flyctl launch --config fly.toml --copy-config --no-deploy
+   ```
+3. Allow your Vercel (or other) origin:
+   ```bash
+   flyctl secrets set ALLOWED_ORIGINS="https://your-app.vercel.app"
+   ```
+4. Deploy via npm (requires `flyctl` on the PATH):
+   ```bash
+   npm run deploy:fly
+   ```
+5. Copy the resulting Fly.io HTTPS URL into the Connection Settings card (or `REACT_APP_SOCKET_URL` during builds).
+
+Need a temporary tunnel while developing locally? Run `npm run dev` inside `joker-pursuit/server` and expose it with `flyctl proxy 8080` or `ngrok http 8080`, then point the Connection Settings banner at the generated URL.
+
+### Deploying to Vercel
+
+The repository includes a `vercel.json` configuration that tells Vercel to build the React application from the `joker-pursuit` subdirectory and routes all SPA paths back to `index.html`. When creating a new Vercel project, set the root of the project to the repository root and ensure the following environment variables are configured:
+
+- `REACT_APP_SOCKET_URL`
+- `ALLOWED_ORIGINS`
+
+Deploy the backend separately on a platform that supports long-lived WebSocket connections (e.g. Fly.io, Render, Railway, or a traditional VPS) and update the environment variables accordingly.
+
 ## How to Play
 
 ### Local Game
