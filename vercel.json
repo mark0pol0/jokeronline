@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "functions": {
+    "api/**/*.ts": {
+      "maxDuration": 60
+    }
+  },
+  "installCommand": "npm install --prefix joker-pursuit",
+  "buildCommand": "npm run build --prefix joker-pursuit",
+  "outputDirectory": "joker-pursuit/build",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
+}
