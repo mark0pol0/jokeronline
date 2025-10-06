@@ -161,7 +161,7 @@
 
 .peg.selectable {
   animation: pulse 1.5s infinite;
-  box-shadow: 0 0 0 4px rgba(255, 193, 7, 0.7), 0 0 20px rgba(255, 193, 7, 0.5);
+  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.7), 0 0 15px rgba(255, 215, 0, 0.5);
   z-index: 20;
 }
 
@@ -336,5 +336,32 @@
 @media (max-width: 480px) {
   .board-container {
     width: 100%;
+  }
+}
+
+/* Improved mobile touch targets */
+@media (max-width: 768px) {
+  .peg {
+    width: 20px;
+    height: 20px;
+    /* Slightly larger touch target on mobile */
+    transform: scale(1.1);
+  }
+  
+  .peg.selectable {
+    animation: pulse 1.5s infinite;
+    /* Make selectable pegs even more obvious on mobile */
+    transform: scale(1.15);
+    box-shadow: 0 0 0 4px rgba(255, 215, 0, 0.8), 0 0 20px rgba(255, 215, 0, 0.6);
+  }
+  
+  .peg.selected {
+    /* Make selected peg more obvious on mobile */
+    transform: scale(1.25);
+  }
+  
+  /* Add active state for touch feedback */
+  .peg:active, .board-space:active {
+    opacity: 0.7;
   }
 } 

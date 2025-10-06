@@ -225,11 +225,41 @@ const Board: React.FC<BoardProps> = ({
     
     const board = boardRef.current;
     
-    // Important: When zooming, we only update the scale component of the transform
-    // but maintain the current position (left/top CSS properties), which preserves
-    // the user's current view rather than snapping back to center
-    board.style.transform = `translate(-50%, -50%) scale(${zoomLevel})`;
-    board.style.transformOrigin = 'center center';
+    // Only apply transform if no pinch-zooming is active
+    // This completely avoids conflicts between React state updates and direct DOM manipulation
+    if (!document.documentElement.classList.contains('pinch-zooming')) {
+      // Important: When zooming, we only update the scale component of the transform
+      // but maintain the current position (left/top CSS properties), which preserves
+      // the user's current view rather than snapping back to center
+      board.style.transform = `translate(-50%, -50%) scale(${zoomLevel})`;
+      board.style.transformOrigin = 'center center';
+    }
+    
+    // Handle removal of pinch-zooming class
+    const handlePinchEnd = () => {
+      // When pinch ends, make sure board transform matches the current zoom level
+      requestAnimationFrame(() => {
+        board.style.transform = `translate(-50%, -50%) scale(${zoomLevel})`;
+      });
+    };
+    
+    // Listen for the removal of the pinch-zooming class
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'class') {
+          const classList = document.documentElement.classList;
+          if (!classList.contains('pinch-zooming')) {
+            handlePinchEnd();
+          }
+        }
+      });
+    });
+    
+    observer.observe(document.documentElement, { attributes: true });
+    
+    return () => {
+      observer.disconnect();
+    };
   }, [zoomLevel]);
 
   // Calculate dynamic board size based on number of players
@@ -489,6 +519,24 @@ const Board: React.FC<BoardProps> = ({
       }
     };
     
+    // Handle touch events for mobile devices
+    const handlePegTouch = (e: React.TouchEvent) => {
+      e.stopPropagation(); // Prevent the touch from bubbling to the space
+      e.preventDefault(); // Prevent default behavior
+      
+      // If this is a selectable opponent peg in a selectable space (for joker card)
+      if (isPegInSelectableSpace) {
+        // Trigger the space click handler instead
+        onSpaceClick(space.id);
+        return;
+      }
+      
+      // Normal peg selection
+      if (isSelectable) {
+        onPegSelect(pegId);
+      }
+    };
+    
     return (
       <div 
         key={pegId}
@@ -500,6 +548,7 @@ const Board: React.FC<BoardProps> = ({
           cursor: (isSelectable || isPegInSelectableSpace) ? 'pointer' : 'default'
         }}
         onClick={handlePegClick}
+        onTouchEnd={handlePegTouch}
       />
     );
   };
@@ -620,6 +669,11 @@ const Board: React.FC<BoardProps> = ({
           className={classes}
           style={style}
           onClick={() => onSpaceClick(space.id)}
+          onTouchEnd={(e) => {
+            e.stopPropagation(); // Prevent propagation
+            e.preventDefault(); // Prevent default behavior
+            onSpaceClick(space.id);
+          }}
         >
           {/* Render pegs */}
           {pegColors.map((color, index) => renderPeg(space.pegs[index], color, index, pegColors.length, space))}
@@ -1065,6 +1119,38 @@ const Board: React.FC<BoardProps> = ({
       container.removeEventListener('resetposition', handleResetPosition);
     };
   }, [zoomLevel]);
+
+  // Listen for custom board position updates from pinch-zoom interactions
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    // Function to handle custom board movement events dispatched from touch gestures
+    const handleBoardMoved = (e: CustomEvent) => {
+      if (!boardRef.current) return;
+      
+      const { x, y } = e.detail;
+      
+      // Update the transform state to match the new position
+      setTransform(prev => ({
+        ...prev,
+        translate: { x, y }
+      }));
+      
+      // Directly update the board's position for immediate feedback
+      // This ensures the board stays visible during pinch zooming
+      const board = boardRef.current;
+      board.style.left = `calc(50% + ${x}px)`;
+      board.style.top = `calc(50% + ${y}px)`;
+    };
+    
+    // Add event listener for custom 'boardmoved' events
+    const container = containerRef.current;
+    container.addEventListener('boardmoved', handleBoardMoved as EventListener);
+    
+    return () => {
+      container.removeEventListener('boardmoved', handleBoardMoved as EventListener);
+    };
+  }, []);
 
   return (
     <div 

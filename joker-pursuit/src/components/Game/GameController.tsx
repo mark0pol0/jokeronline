@@ -209,30 +209,54 @@ const GameController: React.FC<GameControllerProps> = ({
   // Start with a larger initial zoom to fit the board better
   const [zoomLevel, setZoomLevel] = useState(1.2);
   
+  // Add state to track when a pinch gesture is active
+  const [isPinchActive, setIsPinchActive] = useState(false);
+  
+  // Add state variables for pinch tracking - using refs instead of state
+  // to avoid triggering re-renders during pinch operation
+  const initialDistanceRef = useRef(0);
+  const initialScaleRef = useRef(0);
+  const currentZoomRef = useRef(1.2); // Keep track of current zoom during pinch
+  
+  // Create a ref to hold the last update time for debouncing
+  const lastUpdateTimeRef = useRef(0);
+  const requestAnimationFrameIdRef = useRef<number | null>(null);
+  
   // Min and max zoom limits
   const MIN_ZOOM = 0.5;
   const MAX_ZOOM = 9.99;
   
   // Function to handle zoom in
   const handleZoomIn = () => {
+    // Skip if pinch gesture is active
+    if (isPinchActive) return;
+    
     setZoomLevel(prevZoom => {
       // Calculate zoom increment based on current zoom level for acceleration
-      const zoomIncrement = Math.max(0.05, prevZoom * 0.08);
+      // Increase the multiplier further to make the zoom steps more noticeable (0.15 to 0.2)
+      const zoomIncrement = Math.max(0.15, prevZoom * 0.2);
       return Math.min(prevZoom + zoomIncrement, MAX_ZOOM);
     });
   };
   
   // Function to handle zoom out
   const handleZoomOut = () => {
+    // Skip if pinch gesture is active
+    if (isPinchActive) return;
+    
     setZoomLevel(prevZoom => {
       // Calculate zoom decrement based on current zoom level for acceleration
-      const zoomDecrement = Math.max(0.05, prevZoom * 0.08);
+      // Increase the multiplier further to make the zoom steps more noticeable (0.15 to 0.2)
+      const zoomDecrement = Math.max(0.15, prevZoom * 0.2);
       return Math.max(prevZoom - zoomDecrement, MIN_ZOOM);
     });
   };
   
   // Function to reset zoom to default
   const handleResetZoom = () => {
+    // Skip if pinch gesture is active
+    if (isPinchActive) return;
+    
     setZoomLevel(1.2); // Reset to initial zoom level
     
     // Reset board position to center
@@ -249,13 +273,16 @@ const GameController: React.FC<GameControllerProps> = ({
     }
   };
 
-  // Simple resize handler
+  // Touch handlers and zoom effect
   useEffect(() => {
     const handleResize = () => {
       setResponsiveScale(calculateResponsiveScale());
     };
     
     const handleWheel = (e: WheelEvent) => {
+      // Skip if pinch gesture is active
+      if (isPinchActive) return;
+      
       // Check if the wheel event is on the board area
       const boardArea = document.querySelector('.board-area');
       if (boardArea && (boardArea.contains(e.target as Node) || boardArea === e.target)) {
@@ -279,81 +306,154 @@ const GameController: React.FC<GameControllerProps> = ({
       }
     };
     
-    // For pinch zoom on touch devices
-    let initialTouchDistance = 0;
-    
-    const getTouchDistance = (e: TouchEvent): number => {
-      if (e.touches.length < 2) return 0;
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
+    // Function to calculate distance between two touch points for this effect scope
+    const getTouchDistanceLocal = (touches: TouchList): number => {
+      if (touches.length < 2) return 0;
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
       return Math.sqrt(dx * dx + dy * dy);
     };
     
-    const handleTouchStart = (e: TouchEvent) => {
-      // Only handle pinch gesture (2 fingers)
+    // Touch start handler scoped to this effect
+    const handleTouchStartLocal = (e: TouchEvent) => {
       if (e.touches.length === 2) {
-        // Check if touch is on the board area
-        const boardArea = document.querySelector('.board-area');
-        if (boardArea && (boardArea.contains(e.target as Node) || boardArea === e.target)) {
-          initialTouchDistance = getTouchDistance(e);
-        }
-      }
-    };
-    
-    const handleTouchMove = (e: TouchEvent) => {
-      // Only handle pinch gesture (2 fingers)
-      if (e.touches.length === 2 && initialTouchDistance > 0) {
-        // Check if touch is on the board area
-        const boardArea = document.querySelector('.board-area');
-        if (boardArea && (boardArea.contains(e.target as Node) || boardArea === e.target)) {
+        // Get the touch distance
+        const distance = getTouchDistanceLocal(e.touches);
+        
+        if (distance > 0) {
+          // Prevent default to disable browser's native pinch zoom
           e.preventDefault();
           
-          const currentDistance = getTouchDistance(e);
-          const distanceChange = currentDistance - initialTouchDistance;
+          // Mark that pinch is active
+          setIsPinchActive(true);
           
-          // Respond to even smaller changes to make zoom feel more responsive
-          if (Math.abs(distanceChange) > 5) {
-            // Calculate base zoom factor based on the pinch delta
-            const baseZoomFactor = (distanceChange / initialTouchDistance) * 0.15;
-            
-            // Add acceleration based on current zoom level and pinch speed
-            // The faster the pinch and higher the zoom, the more responsive
-            const pinchSpeed = Math.min(1, Math.abs(distanceChange) / 100);
-            const accelerationFactor = pinchSpeed * 0.15 * Math.sqrt(zoomLevel);
-            
-            // Combine base factor with acceleration for final zoom change
-            const zoomChange = baseZoomFactor + (baseZoomFactor * accelerationFactor);
-            
-            setZoomLevel(prevZoom => {
-              const newZoom = prevZoom + zoomChange;
-              return Math.min(Math.max(newZoom, MIN_ZOOM), MAX_ZOOM);
-            });
-            
-            // Update initial distance for the next move
-            initialTouchDistance = currentDistance;
+          // Add class to document to indicate pinch zooming is active
+          document.documentElement.classList.add('pinch-zooming');
+          
+          // Store initial values in refs
+          initialDistanceRef.current = distance;
+          initialScaleRef.current = zoomLevel;
+          
+          // Reset animation frame reference
+          if (requestAnimationFrameIdRef.current !== null) {
+            cancelAnimationFrame(requestAnimationFrameIdRef.current);
+            requestAnimationFrameIdRef.current = null;
           }
+          
+          // Reset last update time
+          lastUpdateTimeRef.current = Date.now();
         }
       }
     };
     
-    const handleTouchEnd = () => {
-      initialTouchDistance = 0;
+    // Function to smoothly update zoom using requestAnimationFrame
+    const updateZoomSmoothLocal = (newZoom: number) => {
+      // Cancel any pending animation frame
+      if (requestAnimationFrameIdRef.current !== null) {
+        cancelAnimationFrame(requestAnimationFrameIdRef.current);
+      }
+      
+      // Get the board element
+      const boardElement = document.querySelector('.board');
+      if (!boardElement) {
+        return;
+      }
+      
+      // During pinch gesture, ONLY update the DOM directly (no React state updates)
+      // This prevents fighting between React renders and direct DOM manipulation
+      if (isPinchActive) {
+        // Apply the new zoom directly for immediate feedback
+        (boardElement as HTMLElement).style.transform = `translate(-50%, -50%) scale(${newZoom})`;
+        
+        // Store the current zoom in ref for when pinch ends
+        currentZoomRef.current = newZoom;
+      } else {
+        // When not pinching, update both DOM and React state
+        (boardElement as HTMLElement).style.transform = `translate(-50%, -50%) scale(${newZoom})`;
+        setZoomLevel(newZoom);
+      }
+      
+      // Clear the animation frame reference
+      requestAnimationFrameIdRef.current = null;
     };
     
+    // Touch move handler scoped to this effect
+    const handleTouchMoveLocal = (e: TouchEvent) => {
+      if (!isPinchActive || e.touches.length !== 2) return;
+      
+      // Prevent default browser behavior
+      e.preventDefault();
+      
+      // Get current touch distance
+      const currentDistance = getTouchDistanceLocal(e.touches);
+      
+      if (currentDistance > 0 && initialDistanceRef.current > 0) {
+        // Calculate new scale based on distance change
+        const scaleFactor = currentDistance / initialDistanceRef.current;
+        const newZoom = Math.min(Math.max(initialScaleRef.current * scaleFactor, MIN_ZOOM), MAX_ZOOM);
+        
+        // Throttle updates to prevent too many redraws
+        const now = Date.now();
+        if (now - lastUpdateTimeRef.current > 16) { // Aiming for ~60fps
+          // Update the zoom smoothly
+          updateZoomSmoothLocal(newZoom);
+          lastUpdateTimeRef.current = now;
+        }
+      }
+    };
+    
+    // Touch end handler scoped to this effect
+    const handleTouchEndLocal = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        // If pinch was active but now ended, update React state with final zoom level
+        if (isPinchActive) {
+          // Update the React state to match the final zoom level
+          setZoomLevel(currentZoomRef.current);
+        }
+        
+        // Reset pinch state when less than 2 fingers remain
+        setIsPinchActive(false);
+        
+        // Remove pinch zooming class
+        document.documentElement.classList.remove('pinch-zooming');
+        
+        // Cancel any pending animation
+        if (requestAnimationFrameIdRef.current !== null) {
+          cancelAnimationFrame(requestAnimationFrameIdRef.current);
+          requestAnimationFrameIdRef.current = null;
+        }
+      }
+    };
+    
+    // Apply event listeners
     window.addEventListener('resize', handleResize);
     window.addEventListener('wheel', handleWheel, { passive: false });
-    window.addEventListener('touchstart', handleTouchStart, { passive: true });
-    window.addEventListener('touchmove', handleTouchMove, { passive: false });
-    window.addEventListener('touchend', handleTouchEnd);
     
+    // Add touch event listeners directly to the board area
+    const boardArea = document.querySelector('.board-area');
+    if (boardArea) {
+      boardArea.addEventListener('touchstart', handleTouchStartLocal as unknown as EventListener, { passive: false });
+      boardArea.addEventListener('touchmove', handleTouchMoveLocal as unknown as EventListener, { passive: false });
+      boardArea.addEventListener('touchend', handleTouchEndLocal as unknown as EventListener);
+    }
+    
+    // Clean up
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('wheel', handleWheel);
-      window.removeEventListener('touchstart', handleTouchStart);
-      window.removeEventListener('touchmove', handleTouchMove);
-      window.removeEventListener('touchend', handleTouchEnd);
+      
+      if (boardArea) {
+        boardArea.removeEventListener('touchstart', handleTouchStartLocal as unknown as EventListener);
+        boardArea.removeEventListener('touchmove', handleTouchMoveLocal as unknown as EventListener);
+        boardArea.removeEventListener('touchend', handleTouchEndLocal as unknown as EventListener);
+      }
+      
+      // Cancel any pending animation frame on cleanup
+      if (requestAnimationFrameIdRef.current !== null) {
+        cancelAnimationFrame(requestAnimationFrameIdRef.current);
+      }
     };
-  }, [zoomLevel]);
+  }, [zoomLevel, isPinchActive, MIN_ZOOM, MAX_ZOOM]); // Dependencies that don't include the handlers
   
   // Debug useEffect for peg tracking
   useEffect(() => {
@@ -2804,10 +2904,23 @@ const GameController: React.FC<GameControllerProps> = ({
           
           {/* Add zoom controls */}
           <div className="zoom-controls">
-            <button className="zoom-button" onClick={handleZoomIn}>+</button>
+            <button 
+              className={`zoom-button ${isPinchActive ? 'disabled' : ''}`} 
+              onClick={handleZoomIn}
+              disabled={isPinchActive}
+            >+</button>
             <div className="zoom-level">{Math.round(zoomLevel * 100)}%</div>
-            <button className="zoom-button" onClick={handleZoomOut}>−</button>
-            <button className="zoom-button reset-zoom" onClick={handleResetZoom} title="Reset zoom">
+            <button 
+              className={`zoom-button ${isPinchActive ? 'disabled' : ''}`} 
+              onClick={handleZoomOut}
+              disabled={isPinchActive}
+            >−</button>
+            <button 
+              className={`zoom-button reset-zoom ${isPinchActive ? 'disabled' : ''}`} 
+              onClick={handleResetZoom} 
+              title="Reset zoom"
+              disabled={isPinchActive}
+            >
               <span style={{ fontSize: '14px' }}>⟲</span>
             </button>
           </div>

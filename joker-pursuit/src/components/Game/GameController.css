@@ -1381,6 +1381,20 @@ input:checked + .dev-slider:before {
   transform: scale(0.95);
 }
 
+/* Add styles for disabled zoom buttons */
+.zoom-button.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+  background-color: rgba(150, 150, 150, 0.2);
+  transform: none;
+  box-shadow: none;
+}
+
+.zoom-button.reset-zoom.disabled {
+  background-color: rgba(50, 50, 50, 0.2);
+}
+
 .zoom-level {
   color: white;
   text-align: center;
