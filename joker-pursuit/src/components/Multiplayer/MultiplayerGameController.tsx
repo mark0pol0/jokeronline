@@ -1,27 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useMultiplayer, MultiplayerPlayer } from '../../context/MultiplayerContext';
-import { GameState, createInitialGameState, GamePhase } from '../../models/GameState';
-import { createBoard, BoardSpace, SpaceType } from '../../models/BoardModel';
+import { GameState } from '../../models/GameState';
+import { createBoard } from '../../models/BoardModel';
 import { Card, Rank, Suit } from '../../models/Card';
 import { CardSuit, CardRank } from '../../types/gameTypes';
 import GameController from '../Game/GameController';
 import './MultiplayerStyles.css';
-
-// Improved component to show waiting for player's turn with appropriate messaging
-const PlayerTurnOverlay: React.FC<{ 
-  playerName: string; 
-  isLocalPlayer: boolean;
-}> = ({ playerName, isLocalPlayer }) => {
-  return (
-    <div className="player-waiting-overlay">
-      <div className="player-waiting-message">
-        <h3>{playerName}'s turn<span className="loading-dots"></span></h3>
-        {!isLocalPlayer && <p>Waiting for their move</p>}
-        {isLocalPlayer && <p>Your turn now!</p>}
-      </div>
-    </div>
-  );
-};
 
 interface MultiplayerGameControllerProps {
   onBack: () => void;
@@ -33,13 +17,8 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     isHost,
     roomId,
     roomCode,
-    playerId, 
-    players, 
-    isGameStarted,
-    clearError,
-    createRoom,
-    joinRoom,
-    startGame,
+    playerId,
+    players,
     updatePlayerColor,
     leaveRoom,
     socket
@@ -48,25 +27,39 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isCurrentPlayerTurn, setIsCurrentPlayerTurn] = useState<boolean>(false);
   const [currentTurnPlayer, setCurrentTurnPlayer] = useState<string>('');
-  const [isShufflingDone, setIsShufflingDone] = useState<boolean>(false);
   const [isColorSelectionDone, setIsColorSelectionDone] = useState<boolean>(false);
   const [selectedColors, setSelectedColors] = useState<Record<string, string>>({});
   const [gamePhase, setGamePhase] = useState<'setup' | 'colorSelection' | 'shuffling' | 'playing'>('colorSelection');
-  const [playerIdMap, setPlayerIdMap] = useState<Record<string, string>>({});
   const [gameControllerKey, setGameControllerKey] = useState<number>(0);
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState<number>(0);
 
-  // Convert multiplayer players to game format
-  const playerNames = players.map((p: MultiplayerPlayer) => p.name);
+  // Keep selected colors in sync with data from the server
+  useEffect(() => {
+    const syncedColors = players.reduce((acc, player) => {
+      if (player.color) {
+        acc[player.id] = player.color;
+      }
+      return acc;
+    }, {} as Record<string, string>);
 
-  // Create player teams (each player in their own team for simplicity)
-  const playerTeams: Record<string, number> = {};
-  players.forEach((player: MultiplayerPlayer, index: number) => {
-    playerTeams[player.id] = index;
-  });
+    if (Object.keys(syncedColors).length === 0) {
+      return;
+    }
 
-  // Create player colors from selected colors
-  const playerColors: Record<string, string> = selectedColors;
+    setSelectedColors(prev => {
+      let hasChanges = false;
+      const updated = { ...prev };
+
+      Object.entries(syncedColors).forEach(([id, color]) => {
+        if (updated[id] !== color) {
+          updated[id] = color;
+          hasChanges = true;
+        }
+      });
+
+      return hasChanges ? updated : prev;
+    });
+  }, [players]);
 
   // Register socket event listeners properly
   useEffect(() => {
@@ -324,171 +317,91 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     }
   };
 
-  // Handle card shuffling (host only)
-  const handleShuffleDeck = (deckState: any) => {
-    if (!isOnlineMode || !roomId || !isHost) return;
-    
-    // Generate a properly shuffled deck
-    const shuffledDeck = generateShuffledDeck();
-    
-    // Create a simplified player ID map to ensure consistent ID formats
-    const playerIdMap: Record<string, string> = {};
-    players.forEach((player, index) => {
-      // Create simple sequential IDs (player-1, player-2, etc.)
-      // Only add to map if id is not null
-      if (player.id) {
-        playerIdMap[player.id] = `player-${index + 1}`;
+  // Prepare and send the initial online game state (host only)
+  const sendInitialGameState = () => {
+    if (!isOnlineMode || !roomId || !isHost || players.length === 0) {
+      return;
+    }
+
+    const deck = generateShuffledDeck();
+
+    const playerColorsBySection = players.reduce((colors, player, index) => {
+      const color = selectedColors[player.id] || player.color || '#CCCCCC';
+      colors[`player_${index + 1}`] = color;
+      return colors;
+    }, {} as Record<string, string>);
+
+    const board = createBoard(
+      `board-${Date.now()}`,
+      players.length,
+      playerColorsBySection
+    );
+
+    const playerStates = players.map((player, index) => {
+      const color = selectedColors[player.id] || player.color || '#CCCCCC';
+      const hand = deck.splice(0, 5);
+      const pegIds = Array.from({ length: 5 }, (_, pegIndex) => `${player.id}-peg-${pegIndex + 1}`);
+
+      const sectionStartId = `section${index + 1}_starting`;
+      const startingSpace = board.allSpaces.get(sectionStartId);
+      if (startingSpace) {
+        startingSpace.pegs = [...pegIds];
       }
+
+      return {
+        id: player.id,
+        name: player.name,
+        color,
+        hand,
+        pegs: pegIds,
+        isComplete: false,
+        teamId: index
+      };
     });
-    
-    // Log the ID mapping for debugging
-    console.log("Player ID mapping:", playerIdMap);
-    
-    // Create a complete initial game state
+
+    const serializableBoard = {
+      ...board,
+      allSpaces: Object.fromEntries(board.allSpaces)
+    } as unknown as GameState['board'];
+
     const initialGameState: GameState = {
-      id: `game-${Date.now()}`, // Generate a unique ID for this game
-      players: players.map((player, index) => {
-        // Draw 5 cards from the shuffled deck for each player's hand
-        const hand = shuffledDeck.splice(0, 5);
-        
-        // Use the simplified player ID from the map
-        const simplifiedId = playerIdMap[player.id];
-        
-        return {
-          id: simplifiedId, // Use simplified ID format (player-1, player-2, etc.)
-          name: player.name,
-          color: selectedColors[player.id] || '#CCCCCC',
-          hand: hand,
-          // Create pegs as string IDs to match the Player interface (1-indexed to match server)
-          pegs: [
-            `${simplifiedId}-peg-1`,
-            `${simplifiedId}-peg-2`,
-            `${simplifiedId}-peg-3`,
-            `${simplifiedId}-peg-4`,
-            `${simplifiedId}-peg-5`
-          ],
-          isHost: playerId && player.id === playerId && isHost,
-          isComplete: false,
-          teamId: 0
-        };
-      }),
-      currentPlayerIndex: 0, // Start with the first player (usually the host)
+      id: `game-${Date.now()}`,
+      players: playerStates,
+      currentPlayerIndex: 0,
       phase: 'playing',
-      // Create a basic board for the game
-      board: createBoard(
-        `board-${Date.now()}`, 
-        players.length,
-        // Map colors using simplified player IDs to match the format expected by the board
-        players.reduce((colors, player, index) => {
-          // Use both formats to ensure compatibility
-          const simplifiedId = playerIdMap[player.id];
-          const hyphenId = `player-${index+1}`; // Format: player-1
-          const underscoreId = `player_${index+1}`; // Format: player_1
-          
-          // Add all three formats to ensure the board renders correctly
-          colors[simplifiedId] = selectedColors[player.id] || '#CCCCCC';
-          colors[hyphenId] = selectedColors[player.id] || '#CCCCCC';
-          colors[underscoreId] = selectedColors[player.id] || '#CCCCCC';
-          
-          return colors;
-        }, {} as Record<string, string>)
-      ),
-      drawPile: shuffledDeck, // Remaining cards after dealing to players
+      board: serializableBoard,
+      drawPile: deck,
       discardPile: [],
-      moves: [], // Initialize with no moves
+      moves: [],
       winner: undefined
     };
-    
-    // Store the player ID mapping in state for turn comparison later
-    setPlayerIdMap(playerIdMap);
-    
-    console.log("Initial game state created:", initialGameState);
+
+    console.log('Initial game state created:', initialGameState);
+
     setGameState(initialGameState);
-    setIsShufflingDone(true);
+    setCurrentPlayerIndex(0);
+    setCurrentTurnPlayer(playerStates[0]?.name || '');
+    setIsCurrentPlayerTurn(playerStates[0]?.id === playerId);
     setGamePhase('playing');
-    
-    // Send the complete game state to the server
-    shuffleCards(initialGameState);
+
+    socket?.emit('shuffle-cards', {
+      roomId,
+      deckState: initialGameState
+    });
   };
 
   // Function to proceed to the game after color selection
   const handleProceedToGame = () => {
     if (!isOnlineMode || !roomId || !isHost) return;
-    
-    // Change the game phase to shuffling
+
     setGamePhase('shuffling');
-    
-    // Emit an event for all players to go to the shuffling phase
-    if (socket) {
-      socket.emit('change-game-phase', { roomId, phase: 'shuffling' });
-    }
-    
-    // Create an initial game state
-    const initialGameState: GameState = {
-      id: roomId,
-      players: players.map(p => ({
-        id: p.id,
-        name: p.name,
-        color: selectedColors[p.id] || '#CCCCCC', // Default gray if no color selected
-        hand: [],
-        pegs: [
-          `${p.id}-peg-1`,
-          `${p.id}-peg-2`,
-          `${p.id}-peg-3`,
-          `${p.id}-peg-4`,
-          `${p.id}-peg-5`
-        ],
-        isHost: p.id === playerId,
-        isCurrentTurn: p.id === players[0].id, // First player's turn by default
-        isComplete: false, // Required by Player type
-        teamId: 0 // Default team ID
-      })),
-      currentPlayerIndex: 0,
-      phase: 'shuffle' as GamePhase,
-      board: createBoard(
-        roomId, 
-        players.length, 
-        // Create a proper mapping of player indexes to colors
-        players.reduce((colorMap, player, index) => {
-          colorMap[index] = selectedColors[player.id] || '#CCCCCC';
-          return colorMap;
-        }, {} as Record<number, string>)
-      ),
-      drawPile: [], // Will be populated during shuffling
-      discardPile: [],
-      moves: [],
-      winner: undefined // Use undefined instead of null
-    };
-    
-    // Update local state
-    setGameState(initialGameState);
-    
-    // Set the current player
-    const firstPlayer = players[0];
-    setCurrentTurnPlayer(firstPlayer.name);
-    setIsCurrentPlayerTurn(firstPlayer.id === playerId);
-    
-    // Update game state for all players
-    sendGameStateUpdate(initialGameState);
-    
-    // Automatically trigger shuffling after a short delay
+
+    socket?.emit('change-game-phase', { roomId, phase: 'shuffling' });
+
+    // Give clients a brief moment to transition to the shuffling screen
     setTimeout(() => {
-      // Generate shuffled deck
-      const shuffledDeck = generateShuffledDeck();
-      
-      // Update the game state with the shuffled deck
-      const gameStateWithDeck = {
-        ...initialGameState,
-        drawPile: shuffledDeck,
-        phase: 'playing' as GamePhase
-      };
-      
-      // Set the local state
-      setGameState(gameStateWithDeck);
-      
-      // Shuffle the cards and deal them
-      handleShuffleDeck(gameStateWithDeck);
-    }, 1000);
+      sendInitialGameState();
+    }, 750);
   };
 
   const generateShuffledDeck = (): Card[] => {
@@ -685,123 +598,6 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     }
   };
   
-  const shuffleCards = (deckState: any) => {
-    console.log('🃏 Host is shuffling cards...');
-    
-    // Create proper player colors mapping for the board
-    const playerColorMapping: Record<string, string> = {};
-    players.forEach((p, index) => {
-      // Use both formats to ensure compatibility: player_1 format for board, player-ID for game state
-      playerColorMapping[`player_${index+1}`] = p.color;
-      playerColorMapping[p.id] = p.color;
-    });
-    
-    // Create a board with the correct number of sections
-    const gameBoard = createBoard(
-      `board_${Date.now()}`, 
-      players.length, 
-      playerColorMapping
-    );
-    
-    // Create peg objects for each player
-    const playerPegs: Record<string, any[]> = {};
-    players.forEach(p => {
-      playerPegs[p.id] = Array(5).fill(0).map((_, i) => ({
-        id: `${p.id}-peg-${i+1}`,
-        playerId: p.id,
-        location: 'start',
-        position: 0
-      }));
-    });
-    
-    // Find the starting space
-    let startingSpace: BoardSpace | null = null;
-    
-    // Convert to array to avoid iterator issues
-    const spacesArray = Array.from(gameBoard.allSpaces.entries());
-    
-    for (const [id, space] of spacesArray) {
-      if (space.type === 'starting' || id.includes('_starting')) {
-        startingSpace = space;
-        break;
-      }
-    }
-    
-    // If no starting space, create one with the proper type
-    if (!startingSpace) {
-      startingSpace = {
-        id: 'starting_circle',
-        type: 'starting' as SpaceType, // Cast as SpaceType
-        x: 700,
-        y: 700,
-        index: -1,
-        label: 'Start',
-        pegs: [],
-        sectionIndex: 0
-      };
-      gameBoard.allSpaces.set(startingSpace.id, startingSpace);
-    }
-    
-    // Initialize pegs array if it doesn't exist
-    if (!startingSpace.pegs) {
-      startingSpace.pegs = [];
-    }
-    
-    // Place all pegs on the starting space
-    players.forEach(p => {
-      const playerPegIds = playerPegs[p.id].map(peg => peg.id);
-      startingSpace!.pegs.push(...playerPegIds); // Non-null assertion
-    });
-    
-    console.log(`Initial starting space has ${startingSpace.pegs.length} pegs`);
-    
-    // Create a shuffled deck
-    const deck = generateShuffledDeck();
-    
-    // Deal 5 cards to each player
-    const playerHands: Record<string, any[]> = {};
-    players.forEach(p => {
-      playerHands[p.id] = deck.splice(0, 5);
-    });
-    
-    // Create a complete initial game state with proper player setup
-    const initialGameState = {
-      id: `game_${Date.now()}`,
-      players: players.map(p => ({
-        id: p.id,
-        name: p.name,
-        color: p.color,
-        hand: playerHands[p.id],
-        pegs: playerPegs[p.id]
-      })),
-      currentPlayerIndex: 0,
-      phase: 'playing',
-      board: {
-        ...gameBoard,
-        // Convert Map to plain object for serialization
-        allSpaces: Object.fromEntries(gameBoard.allSpaces)
-      },
-      drawPile: deck,
-      discardPile: [],
-      moves: []
-    };
-    
-    console.log('📤 Sending initial game state to server:', initialGameState);
-    console.log('Board sections:', initialGameState.board.sections.length);
-    console.log('Board spaces:', Object.keys(initialGameState.board.allSpaces).length);
-    console.log('Starting space pegs:', startingSpace.pegs.length);
-    
-    if (socket) {
-      // Send the complete game state update
-      socket.emit('shuffle-cards', { 
-        roomId, 
-        deckState: initialGameState 
-      });
-      
-      // Change local phase to indicate we're sending data
-      setGamePhase('playing');
-    }
-  };
 
   // Debug info
   useEffect(() => {
@@ -809,10 +605,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       console.log("Game players:", gameState.players);
       const currentPlayerIndex = gameState.currentPlayerIndex;
       const currentPlayer = gameState.players[currentPlayerIndex];
-      
-      // Add null check for playerId
-      const mappedPlayerId = playerId && playerIdMap[playerId] ? playerIdMap[playerId] : playerId;
-      
+
       console.log("Current game state:", {
         phase: gamePhase,
         currentPlayerIndex,
@@ -822,12 +615,10 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
           isHost: (currentPlayer as any).isHost
         } : null,
         localPlayerId: playerId,
-        mappedPlayerId,
-        playerIdMap,
-        isCurrentPlayerTurn: !!(currentPlayer && mappedPlayerId && currentPlayer.id === mappedPlayerId)
+        isCurrentPlayerTurn: !!(currentPlayer && currentPlayer.id === playerId)
       });
     }
-  }, [gameState, gamePhase, playerId, playerIdMap]);
+  }, [gameState, gamePhase, playerId]);
 
   // Debug effect to log game state changes
   useEffect(() => {
@@ -839,11 +630,10 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
         playerCount: gameState.players?.length || 0,
         drawPileSize: gameState.drawPile?.length || 0,
         discardPileSize: gameState.discardPile?.length || 0,
-        isLocalPlayerTurn: gameState.players?.[gameState.currentPlayerIndex]?.id === 
-          (playerId && playerIdMap[playerId] ? playerIdMap[playerId] : playerId)
+        isLocalPlayerTurn: gameState.players?.[gameState.currentPlayerIndex]?.id === playerId
       });
     }
-  }, [gameState, playerId, playerIdMap]);
+  }, [gameState, playerId]);
 
   // Render the appropriate content based on game phase
   const renderGameContent = () => {
@@ -865,23 +655,18 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       const currentPlayerIndex = gameState.currentPlayerIndex || 0;
       const currentPlayer = gameState.players[currentPlayerIndex];
       
-      // Use the playerIdMap to match the current format with the stored format
-      // Add null check for playerId
-      const mappedPlayerId = playerId && playerIdMap[playerId] ? playerIdMap[playerId] : playerId;
-      // Ensure isCurrentPlayerTurn is always a boolean
-      const isCurrentPlayerTurn: boolean = !!(currentPlayer && mappedPlayerId && currentPlayer.id === mappedPlayerId);
-      
+      const isCurrentPlayerTurn: boolean = !!(currentPlayer && currentPlayer.id === playerId);
+
       console.log('🎮 Rendering game with current player turn:', {
         currentPlayerIndex,
         isCurrentPlayerTurn,
         myId: playerId
       });
-      
+
       console.log("Turn information:", {
         currentPlayerIndex,
         currentPlayerId: currentPlayer?.id,
         localPlayerId: playerId,
-        mappedPlayerId: mappedPlayerId,
         isCurrentPlayerTurn
       });
       
