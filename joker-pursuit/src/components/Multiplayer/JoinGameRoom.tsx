@@ -33,8 +33,8 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="multiplayer-container">
-      <h2>Join Game Room</h2>
+    <section className="multiplayer-panel" aria-labelledby="join-room-title">
+      <h2 id="join-room-title">Join Game Room</h2>
       
       {!connectedRoomCode ? (
         <form onSubmit={handleJoinRoom} className="multiplayer-form">
@@ -67,7 +67,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack }) => {
           {error && (
             <div className="error-message">
               <p>{error}</p>
-              <button onClick={clearError} className="clear-error-btn">✕</button>
+              <button type="button" onClick={clearError} className="clear-error-btn">✕</button>
             </div>
           )}
           
@@ -114,7 +114,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack }) => {
           {error && (
             <div className="error-message">
               <p>{error}</p>
-              <button onClick={clearError} className="clear-error-btn">✕</button>
+              <button type="button" onClick={clearError} className="clear-error-btn">✕</button>
             </div>
           )}
           
@@ -131,7 +131,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack }) => {
           <p className="helper-text">Waiting for the host to start the game...</p>
         </div>
       )}
-    </div>
+    </section>
   );
 };
 

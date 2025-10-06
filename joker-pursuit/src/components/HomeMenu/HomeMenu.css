@@ -1,24 +1,26 @@
 /* Home Menu Container */
 .home-menu {
-  position: fixed;
-  top: 0;
-  left: 0;
+  position: relative;
   width: 100%;
-  height: 100vh;
+  min-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   background: linear-gradient(135deg, #8B0000 0%, #4A0404 100%);
   overflow: hidden;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
+  padding: clamp(32px, 8vw, 96px) clamp(16px, 6vw, 48px);
+  border-radius: 24px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
 }
 
 /* Floating Elements */
 .floating-element {
-  position: absolute;
+  position: fixed;
   pointer-events: none;
   animation: float 20s infinite linear;
   opacity: 0.15;
   will-change: transform;
+  z-index: 0;
 }
 
 .floating-element.card {
@@ -41,25 +43,24 @@
   position: relative;
   z-index: 1;
   text-align: center;
-  padding: 3rem;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  animation: fadeIn 1s ease-out;
-  max-width: 90%;
-  width: 500px;
+  padding: clamp(24px, 6vw, 48px);
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(18px);
+  border-radius: 28px;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  animation: fadeIn 0.6s ease-out;
+  width: min(520px, 100%);
   margin: 0 auto;
 }
 
 /* Game Title */
 .game-title {
-  font-size: 4rem;
+  font-size: clamp(2.75rem, 8vw, 4rem);
   color: #ffffff;
   margin: 0;
   font-family: 'Georgia', serif;
-  text-shadow: 
+  text-shadow:
     0 2px 4px rgba(0, 0, 0, 0.3),
     0 4px 8px rgba(0, 0, 0, 0.2);
   letter-spacing: 2px;
@@ -81,7 +82,7 @@
 /* Game Subtitle */
 .game-subtitle {
   color: #ffffff;
-  font-size: 1.2rem;
+  font-size: clamp(1.05rem, 3.4vw, 1.35rem);
   margin: 1rem 0 2rem;
   opacity: 0.8;
   font-style: italic;
@@ -92,20 +93,20 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.5rem;
-  margin-top: 2rem;
+  gap: clamp(12px, 3vw, 20px);
+  margin-top: clamp(24px, 5vw, 36px);
 }
 
 /* Skeuomorphic Buttons */
 .skeuomorphic-button {
   position: relative;
   width: 100%;
-  max-width: 300px;
-  padding: 1rem;
+  max-width: 320px;
+  padding: clamp(14px, 3.6vw, 18px) clamp(16px, 4vw, 22px);
   border: none;
-  border-radius: 12px;
-  font-size: 1.2rem;
-  font-weight: bold;
+  border-radius: 14px;
+  font-size: clamp(1.05rem, 3.6vw, 1.2rem);
+  font-weight: 700;
   cursor: pointer;
   overflow: hidden;
   transition: transform 0.2s, box-shadow 0.2s;
@@ -180,15 +181,15 @@
 
 .modal-content {
   background: #1a1a2e;
-  padding: 2rem;
-  border-radius: 20px;
-  max-width: 600px;
+  padding: clamp(20px, 5vw, 32px);
+  border-radius: 24px;
+  max-width: 640px;
   width: 100%;
-  max-height: 90vh;
+  max-height: min(92vh, 720px);
   overflow-y: auto;
   color: white;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   animation: slideUp 0.3s ease-out;
 }
 
@@ -304,25 +305,47 @@
 
 /* Media Queries */
 @media (max-width: 768px) {
-  .game-title {
-    font-size: 3rem;
+  .home-menu {
+    padding: clamp(28px, 6vw, 60px) clamp(12px, 5vw, 32px);
+    border-radius: 18px;
   }
-  
+
   .menu-content {
-    padding: 2rem;
+    padding: clamp(20px, 6vw, 32px);
   }
-  
+
+  .button-container {
+    gap: 16px;
+  }
+
   .skeuomorphic-button {
-    width: 100%;
-    max-width: 250px;
-    font-size: 1rem;
+    max-width: 100%;
   }
 
   .modal-content {
-    padding: 1.5rem;
+    padding: clamp(18px, 5vw, 28px);
   }
 
   .modal-content h2 {
-    font-size: 1.5rem;
+    font-size: 1.6rem;
   }
-} 
+}
+
+@media (max-width: 480px) {
+  .home-menu {
+    padding: clamp(24px, 9vw, 40px) clamp(12px, 6vw, 24px);
+    border-radius: 14px;
+  }
+
+  .menu-content {
+    padding: clamp(18px, 8vw, 26px);
+  }
+
+  .vintage-line {
+    width: 100%;
+  }
+
+  .modal-content {
+    border-radius: 18px;
+  }
+}

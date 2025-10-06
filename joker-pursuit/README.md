@@ -72,6 +72,37 @@ cd server
 npm start
 ```
 
+### Environment Configuration
+
+Copy the provided `.env.example` files to `.env` and update the variables for your deployment targets:
+
+```
+cp .env.example .env
+cp server/.env.example server/.env
+```
+
+- `REACT_APP_SOCKET_URL` — the public URL of your Socket.IO server. For the built-in Vercel function you can omit this and the app will connect to the current origin.
+- `REACT_APP_SOCKET_PATH` — the Socket.IO path exposed by the backend. Defaults to `/api/socket`, which matches both the bundled Node server and the Vercel function.
+- `ALLOWED_ORIGINS` — a comma-separated list of origins that are allowed to connect to the Socket.IO server (configure this in `server/.env`). Include your Vercel domain (e.g. `https://your-app.vercel.app`) so the backend accepts production connections.
+- `SOCKET_IO_PATH` — override the Socket.IO path on the Node server. Leave as `/api/socket` to mirror the serverless handler.
+
+### Configuring the multiplayer connection
+
+- Use the **Connection Settings** card in the online lobby to update the Socket.IO endpoint without rebuilding the client. Paste the public URL of your hosted server (or a tunnel) and the app will reconnect automatically.
+- The selection is stored in `localStorage`, so a mobile browser will remember your choice between sessions.
+- Connection errors are surfaced directly in the banner so it's obvious when the backend is offline or blocked by CORS.
+
+### Hosting on Vercel
+
+Vercel can now serve both the static React build **and** the Socket.IO backend through a serverless API route:
+
+1. The provided `vercel.json` builds the client from `joker-pursuit`, exposes the `api/socket.ts` function, and rewrites SPA routes back to `index.html` without affecting `/api/*` paths.
+2. Add `ALLOWED_ORIGINS` (comma-separated) and, if you use a custom domain, update it whenever the deployment URL changes. The serverless function respects these origins.
+3. Optionally override `REACT_APP_SOCKET_URL` when you want the client to connect to a different host (for example, a locally running dev server). Leave it unset in production so browsers connect back to the same Vercel origin.
+4. If you self-host the Node server instead, keep `SOCKET_IO_PATH` and `REACT_APP_SOCKET_PATH` aligned so the client and server agree on the WebSocket endpoint.
+
+Need a dedicated always-on backend? The project still includes Fly.io deployment assets (`server/Dockerfile` and `server/fly.toml`) so you can launch the Socket.IO server on that platform, then point the client at the Fly URL via the Connection Settings panel or environment variables.
+
 ## How to Play
 
 ### Local Game
