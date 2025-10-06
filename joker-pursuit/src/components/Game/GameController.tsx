@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GameState, createInitialGameState, advanceToNextPlayer, isGameOver, shuffleAndDealCards, GamePhase, Move } from '../../models/GameState';
+import { GameState, createInitialGameState, advanceToNextPlayer, isGameOver, shuffleAndDealCards, Move } from '../../models/GameState';
 import { getPossibleMoves, applyMove, findSpaceForPeg } from '../../utils/MovementUtils';
 import { BoardSpace } from '../../models/BoardModel';
 import { Card } from '../../models/Card';
 import Board from '../Board/Board';
-import PlayerPanel from '../PlayerPanel/PlayerPanel';
 import CardHand from '../CardHand/CardHand';
 import './GameController.css';
 import { Player } from '../../models/Player';
@@ -62,10 +61,6 @@ interface FloatingElement {
   rotation: number;
   scale: number;
 }
-
-const hasFaceCards = (hand: Card[]): boolean => {
-  return hand.some(card => card.isFace || card.rank === 'joker' || card.rank === 'ace');
-};
 
 // Determine if a player can use the discard hand button based on new rules
 const canUseDiscardButton = (gameState: GameState, player: Player): boolean => {
@@ -537,9 +532,6 @@ const GameController: React.FC<GameControllerProps> = ({
   // Add new state to track when first move is complete
   const [firstMoveCompleted, setFirstMoveCompleted] = useState<boolean>(false);
   
-  // Add state for debug logging
-  const [debugLogs, setDebugLogs] = useState<string[]>([]);
-  
   // Add these to the existing state variables
   const [castlePromptState, setCastlePromptState] = useState<{
     isActive: boolean;
@@ -556,7 +548,6 @@ const GameController: React.FC<GameControllerProps> = ({
     const timestamp = new Date().toLocaleTimeString();
     const logMessage = `[${timestamp}] ${message}`;
     console.log(`[DEBUG] ${logMessage}`);
-    setDebugLogs(prev => [...prev, logMessage]);
   };
   
   // Add a function to update game state and notify other players in multiplayer mode
@@ -611,7 +602,7 @@ const GameController: React.FC<GameControllerProps> = ({
       logDebug(`Current player: ${currentPlayer.name} (${currentPlayer.id})`);
       logDebug(`Hand: ${currentPlayer.hand.map(c => `${c.rank} of ${c.suit}`).join(', ')}`);
     }
-  }, [gameState.currentPlayerIndex, gameState.phase]);
+  }, [gameState.currentPlayerIndex, gameState.phase, gameState.players]);
   
   // Calculate selectable spaces when a card is selected
   const calculateSelectableSpaces = (cardId: string) => {
