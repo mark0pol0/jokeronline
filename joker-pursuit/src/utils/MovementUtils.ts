@@ -1,3 +1,4 @@
+/* eslint-disable no-loop-func */
 import { BoardSpace } from '../models/BoardModel';
 import { Card } from '../models/Card';
 import { GameState, Move } from '../models/GameState';
@@ -175,39 +176,6 @@ const findAvailableHomeSlot = (gameState: GameState, playerId: string): BoardSpa
   return homeSlots.find(slot => slot.pegs.length === 0);
 };
 
-// Helper function to find the original home slot for a peg
-const findOriginalHomeSlot = (gameState: GameState, pegId: string): BoardSpace | undefined => {
-  // Parse the peg ID to get the player ID and peg number
-  const [playerId, pegNumberStr] = pegId.split('-peg-');
-  const pegNumber = parseInt(pegNumberStr);
-  
-  // Find the player's section
-  const playerSection = gameState.board.sections.find(section => 
-    section.playerIds?.includes(playerId)
-  );
-  
-  if (!playerSection) return undefined;
-  
-  // Find all home slots in the player's section, sorted by index
-  const homeSlots = Array.from(gameState.board.allSpaces.values())
-    .filter(space => 
-      space.sectionIndex === playerSection.index && 
-      space.type === 'home'
-    )
-    .sort((a, b) => a.index - b.index);
-  
-  // The peg's original slot is its number minus 1 (since peg numbers are 1-based but indices are 0-based)
-  const originalSlotIndex = pegNumber - 1;
-  
-  // Return the original slot if it exists
-  if (homeSlots[originalSlotIndex]) {
-    return homeSlots[originalSlotIndex];
-  }
-  
-  // If the original slot can't be found, fall back to any available slot
-  return homeSlots.find(slot => slot.pegs.length === 0);
-};
-
 // Helper function to handle joker bump
 const handleJokerBump = (gameState: GameState, bumpedPegId: string): BoardSpace | undefined => {
   const [bumpedPlayerId] = bumpedPegId.split('-peg-');
@@ -376,7 +344,6 @@ const getNineMoves = (
     // If peg is on a normal space, entrance, or corner
     if (pegSpace.type === 'normal' || pegSpace.type === 'entrance' || pegSpace.type === 'corner') {
       // Check for special slots
-      const isHomeEntrance = pegSpace.type === 'entrance' && pegSpace.index === 8;
       const isCastleEntrance1 = pegSpace.type === 'entrance' && pegSpace.index === 3;
       
       // Get the player's section - this is where their castle is
@@ -465,7 +432,6 @@ const getNineMoves = (
           section.playerIds?.includes(player.id)
         );
         
-        let castleEntryAdded = false;
         
         if (playerSection && pegSpace.sectionIndex === playerSection.index && direction === 'forward') {
           // Only check castle entry for forward movement in player's own section
@@ -521,7 +487,6 @@ const getNineMoves = (
                     }
                   });
                   
-                  castleEntryAdded = true;
                 }
               }
             }
@@ -1159,8 +1124,6 @@ const getSevenSplitMoves = (
             // If we're in a different section (cross-section movement)
             else if (pegSpace.sectionIndex !== playerSection.index) {
               console.log(`[getSevenSplitMoves] Cross-section movement: calculating castle entry steps`);
-              // Calculate steps to reach player's section
-              let stepsToPlayerSection = 0;
               let sectionIndex = pegSpace.sectionIndex;
               let indexInSection = pegSpace.index;
               let tempSteps = steps;
