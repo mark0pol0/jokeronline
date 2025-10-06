@@ -1,7 +1,12 @@
+import path from 'path';
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
-import cors from 'cors';
+import cors, { CorsOptions } from 'cors';
+import { loadEnvFile } from './utils/env';
+
+const envPath = path.resolve(__dirname, '..', '.env');
+loadEnvFile(envPath);
 import { randomBytes } from 'crypto';
 
 // Types for our game state
@@ -21,9 +26,46 @@ interface Room {
   isGameStarted: boolean;
 }
 
+// Helper to serialize players for client responses
+function serializePlayers(players: Player[]) {
+  return players.map(p => ({ id: p.id, name: p.name, color: p.color }));
+}
+
+// Resolve allowed origins for CORS/Socket.IO
+const defaultOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3000',
+  'http://localhost:5173'
+];
+
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+const effectiveOrigins = allowedOrigins.length > 0 ? allowedOrigins : defaultOrigins;
+
+const allowsAllOrigins = effectiveOrigins.includes('*');
+
+const corsOptions: CorsOptions = {
+  origin: (origin, callback) => {
+    if (allowsAllOrigins || !origin || effectiveOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error(`Origin ${origin} not allowed by CORS`));
+  },
+  methods: ['GET', 'POST'],
+  credentials: true
+};
+
+console.log('CORS allowed origins:', effectiveOrigins);
+
 // Create Express app
 const app = express();
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Add a simple endpoint for testing
@@ -37,9 +79,16 @@ const server = http.createServer(app);
 // Create Socket.IO server with simplified options
 const io = new Server(server, {
   cors: {
-    origin: '*', // Allow all origins in development
+    origin: (origin, callback) => {
+      if (allowsAllOrigins || !origin || effectiveOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin ${origin} not allowed by Socket.IO CORS`));
+    },
     methods: ['GET', 'POST'],
-    credentials: false
+    credentials: true
   },
   pingTimeout: 60000,
   pingInterval: 25000
@@ -90,7 +139,13 @@ io.on('connection', (socket) => {
       socket.join(roomId);
       
       console.log(`Room created: ${roomId} with code: ${roomCode}`);
-      callback({ success: true, roomId, roomCode, playerId: player.id });
+      callback({
+        success: true,
+        roomId,
+        roomCode,
+        playerId: player.id,
+        players: serializePlayers(room.players)
+      });
     } catch (error) {
       console.error('Error creating room:', error);
       callback({ success: false, error: 'Failed to create room' });
@@ -143,16 +198,16 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         
         // Notify all players in the room that someone joined
-        io.to(roomId).emit('player-joined', { 
-          players: room.players.map(p => ({ id: p.id, name: p.name, color: p.color }))
+        io.to(roomId).emit('player-joined', {
+          players: serializePlayers(room.players)
         });
-        
-        callback({ 
-          success: true, 
-          roomId, 
-          roomCode: room.code, 
+
+        callback({
+          success: true,
+          roomId,
+          roomCode: room.code,
           playerId: player.id,
-          players: room.players.map(p => ({ id: p.id, name: p.name, color: p.color }))
+          players: serializePlayers(room.players)
         });
       } else {
         console.error(`Room with code ${roomCode} not found`);
@@ -183,8 +238,8 @@ io.on('connection', (socket) => {
       room.isGameStarted = true;
       
       // Notify all players that game is starting
-      io.to(roomId).emit('game-started', { 
-        players: room.players.map(p => ({ id: p.id, name: p.name, color: p.color }))
+      io.to(roomId).emit('game-started', {
+        players: serializePlayers(room.players)
       });
       
       callback({ success: true });
@@ -217,9 +272,9 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('player-color-updated', { playerId, color });
         
         // Return success with updated players array
-        callback({ 
-          success: true, 
-          players: room.players.map(p => ({ id: p.id, name: p.name, color: p.color })) 
+        callback({
+          success: true,
+          players: serializePlayers(room.players)
         });
       } else {
         callback({ success: false, error: 'Player not found' });
@@ -263,7 +318,7 @@ io.on('connection', (socket) => {
     try {
       console.log(`Shuffling cards for room ${roomId}`);
       const room = rooms.get(roomId);
-      
+
       if (!room) {
         console.error(`Room ${roomId} not found for shuffling cards`);
         return;
@@ -278,10 +333,10 @@ io.on('connection', (socket) => {
       console.log('Properly placing pegs on board in starting position');
       
       // Use the provided game state from the client as our initial state
-      room.gameState = deckState;
-      
-      // Set the phase to 'playing'
-      room.gameState.phase = 'playing';
+      room.gameState = {
+        ...deckState,
+        phase: deckState?.phase ?? 'playing'
+      };
       
       // Validate the game state has necessary components
       let startingSpace = null;
@@ -331,15 +386,15 @@ io.on('connection', (socket) => {
       console.log(`Current player after shuffle: ${currentPlayer.name} (${currentPlayer.id})`);
       
       // Broadcast the game state to all clients with extra details
-      io.to(roomId).emit('shuffled-cards', { 
+      io.to(roomId).emit('shuffled-cards', {
         gameState: room.gameState,
         players: room.gameState.players.length,
         boardSpaces: room.gameState.board?.allSpaces instanceof Map ? room.gameState.board.allSpaces.size : 0,
         hasStartingSpace: !!startingSpace
       });
-      
+
       // Also send a game state update to ensure all clients have the latest state
-      io.to(roomId).emit('game-state-update', room.gameState);
+      io.to(roomId).emit('game-state-updated', room.gameState);
     } catch (error) {
       console.error('Error shuffling cards:', error);
     }
@@ -377,65 +432,100 @@ io.on('connection', (socket) => {
 
     const room = rooms.get(roomId);
     if (!room) {
-        console.error(`Room ${roomId} not found`);
-        callback({ success: false, error: 'Room not found' });
-        return;
+      console.error(`Room ${roomId} not found`);
+      callback({ success: false, error: 'Room not found' });
+      return;
+    }
+
+    if (!room.gameState || !room.gameState.players) {
+      console.error(`Room ${roomId} has no active game state`);
+      callback({ success: false, error: 'Game not started' });
+      return;
     }
 
     const player = room.players.find(p => p.socketId === socket.id);
     if (!player) {
-        console.error(`Player not found in room ${roomId}`);
-        callback({ success: false, error: 'Player not found' });
-        return;
+      console.error(`Player not found in room ${roomId}`);
+      callback({ success: false, error: 'Player not found' });
+      return;
     }
 
-    // Ensure it's this player's turn
     const currentPlayer = room.gameState.players[room.gameState.currentPlayerIndex];
-    if (currentPlayer.id !== player.id) {
-        console.error(`Not ${player.name}'s turn`);
-        callback({ success: false, error: 'Not your turn' });
-        return;
+    const movePlayerId = moveData?.playerId ?? player.id;
+
+    if (!currentPlayer || (currentPlayer.id !== player.id && currentPlayer.id !== movePlayerId)) {
+      console.error(`Not ${player.name}'s turn`);
+      callback({ success: false, error: 'Not your turn' });
+      return;
     }
 
-    // Apply the move to the game state
-    console.log(`Processing move from ${player.name}`);
-    
     try {
-        // Add player ID to the move data for tracking
-        const playerMoveData = {
-            ...moveData,
-            playerId: player.id
-        };
-        
-        // Log the move details
-        console.log('Move details:', {
-            playerId: player.id,
-            playerName: player.name,
-            cardId: moveData.cardId,
-            pegId: moveData.pegId,
-            fromPosition: moveData.fromPosition,
-            toPosition: moveData.toPosition
-        });
-        
-        // Broadcast the move to all clients
-        io.to(roomId).emit('player-move', {
-            playerId: player.id,
-            moveData: playerMoveData
-        });
-        
-        // Advance to the next player's turn
-        room.gameState.currentPlayerIndex = (room.gameState.currentPlayerIndex + 1) % room.gameState.players.length;
-        const nextPlayer = room.gameState.players[room.gameState.currentPlayerIndex];
-        console.log(`Turn advanced to player ${nextPlayer.name}`);
-        
-        // Broadcast the updated game state to all clients
-        io.to(roomId).emit('game-state-update', room.gameState);
-        
-        callback({ success: true });
+      const playerMoveData = {
+        ...moveData,
+        playerId: player.id
+      };
+
+      console.log('Move details:', {
+        playerId: player.id,
+        playerName: player.name,
+        cardId: moveData?.cardId,
+        pegId: moveData?.pegId,
+        fromPosition: moveData?.fromPosition,
+        toPosition: moveData?.toPosition
+      });
+
+      io.to(roomId).emit('player-move', {
+        playerId: player.id,
+        moveData: playerMoveData
+      });
+
+      room.gameState.currentPlayerIndex = (room.gameState.currentPlayerIndex + 1) % room.gameState.players.length;
+      const nextPlayer = room.gameState.players[room.gameState.currentPlayerIndex];
+      console.log(`Turn advanced to player ${nextPlayer?.name}`);
+
+      io.to(roomId).emit('game-state-updated', room.gameState);
+
+      callback({ success: true });
     } catch (err) {
-        console.error('Error processing move:', err);
-        callback({ success: false, error: 'Error processing move' });
+      console.error('Error processing move:', err);
+      callback({ success: false, error: 'Error processing move' });
     }
+  });
+
+  // Handle players intentionally leaving a room
+  socket.on('leave-room', (roomId: string) => {
+    console.log(`Socket ${socket.id} requested to leave room ${roomId}`);
+    const room = rooms.get(roomId);
+    if (!room) {
+      return;
+    }
+
+    const playerIndex = room.players.findIndex(p => p.socketId === socket.id);
+    if (playerIndex === -1) {
+      return;
+    }
+
+    const [player] = room.players.splice(playerIndex, 1);
+    socket.leave(roomId);
+
+    if (room.players.length === 0) {
+      rooms.delete(roomId);
+      return;
+    }
+
+    if (room.host === socket.id) {
+      room.host = room.players[0].socketId;
+      io.to(roomId).emit('new-host', {
+        newHostId: room.players[0].id,
+        newHostName: room.players[0].name
+      });
+    }
+
+    io.to(roomId).emit('player-left', {
+      playerId: player.id,
+      playerName: player.name,
+      players: serializePlayers(room.players)
+    });
   });
   
   // Handle disconnection
@@ -467,10 +557,10 @@ io.on('connection', (socket) => {
         }
         
         // Notify remaining players
-        io.to(roomId).emit('player-left', { 
+        io.to(roomId).emit('player-left', {
           playerId: player.id,
           playerName: player.name,
-          players: room.players.map(p => ({ id: p.id, name: p.name, color: p.color }))
+          players: serializePlayers(room.players)
         });
       }
     });
