@@ -24,13 +24,11 @@ type GamePhase = 'home' | 'setup' | 'playing' | 'online' | 'online-playing';
 // Main App component
 const App: React.FC = () => {
   // Get multiplayer state
-  const { isGameStarted, isOnlineMode } = useMultiplayer();
+  const { isGameStarted, isOnlineMode, setOnlineMode } = useMultiplayer();
   
   // State
   const [gamePhase, setGamePhase] = useState<GamePhase>('home');
-  const [onlineMode, setOnlineMode] = useState(false);
   const [playerNames, setPlayerNames] = useState(['Player 1', 'Player 2']);
-  const [playerIds] = useState(['player-1', 'player-2']);
   const [playerColors, setPlayerColors] = useState<Record<string, string>>({
     'player-1': PLAYER_COLORS[0].value, // Red for first player
     'player-2': PLAYER_COLORS[1].value  // Blue for second player
