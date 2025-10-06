@@ -27,6 +27,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const gameStateRef = useRef<GameState | null>(null);
   const [isCurrentPlayerTurn, setIsCurrentPlayerTurn] = useState<boolean>(false);
   const [currentTurnPlayer, setCurrentTurnPlayer] = useState<string>('');
+  const [isColorSelectionDone, setIsColorSelectionDone] = useState<boolean>(false);
   const [selectedColors, setSelectedColors] = useState<Record<string, string>>({});
   const [gamePhase, setGamePhase] = useState<'setup' | 'colorSelection' | 'shuffling' | 'playing'>('colorSelection');
   const [gameControllerKey, setGameControllerKey] = useState<number>(0);
@@ -381,7 +382,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     console.log('Initial game state created:', initialGameState);
 
     setGameState(initialGameState);
-    gameStateRef.current = initialGameState;
+    setCurrentPlayerIndex(0);
     setCurrentTurnPlayer(playerStates[0]?.name || '');
     setIsCurrentPlayerTurn(playerStates[0]?.id === playerId);
     setGamePhase('playing');
@@ -636,10 +637,6 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       });
     }
   }, [gameState, playerId]);
-
-  useEffect(() => {
-    gameStateRef.current = gameState;
-  }, [gameState]);
 
   // Render the appropriate content based on game phase
   const renderGameContent = () => {

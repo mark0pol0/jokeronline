@@ -1,7 +1,7 @@
 // Simple test script to verify socket connection
 const socketIOClient = require('socket.io-client');
 
-const socket = socketIOClient(process.env.SOCKET_TEST_URL || 'http://localhost:8080', {
+const socket = socketIOClient('http://localhost:8080', {
   transports: ['websocket'],
   autoConnect: true,
   path: process.env.SOCKET_TEST_PATH || '/api/socket'
