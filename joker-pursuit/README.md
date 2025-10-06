@@ -72,6 +72,27 @@ cd server
 npm start
 ```
 
+### Environment Configuration
+
+Copy the provided `.env.example` files to `.env` and update the variables for your deployment targets:
+
+```
+cp .env.example .env
+cp server/.env.example server/.env
+```
+
+- `REACT_APP_SOCKET_URL` — the public URL of your Socket.IO server. This **must** be set when deploying the client to Vercel or any static host so browsers know where to open the WebSocket connection.
+- `ALLOWED_ORIGINS` — a comma-separated list of origins that are allowed to connect to the Socket.IO server (configure this in `server/.env`). Include your Vercel domain (e.g. `https://your-app.vercel.app`) so the backend accepts production connections.
+
+### Deploying to Vercel
+
+The repository includes a `vercel.json` configuration that tells Vercel to build the React application from the `joker-pursuit` subdirectory and routes all SPA paths back to `index.html`. When creating a new Vercel project, set the root of the project to the repository root and ensure the following environment variables are configured:
+
+- `REACT_APP_SOCKET_URL`
+- `ALLOWED_ORIGINS`
+
+Deploy the backend separately on a platform that supports long-lived WebSocket connections (e.g. Fly.io, Render, Railway, or a traditional VPS) and update the environment variables accordingly.
+
 ## How to Play
 
 ### Local Game
