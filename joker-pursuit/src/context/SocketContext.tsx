@@ -1,4 +1,13 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  ReactNode
+} from 'react';
 import socketIOClient from 'socket.io-client';
 
 // Define event data types
@@ -11,12 +20,79 @@ interface DebugMessage {
 interface SocketContextType {
   socket: ReturnType<typeof socketIOClient> | null;
   isConnected: boolean;
+  serverUrl: string;
+  connectionError: string | null;
+  updateServerUrl: (url: string) => void;
+  reconnect: () => void;
 }
+
+const STORAGE_KEY = 'joker-pursuit.server-url';
+const DEFAULT_LOCAL_URL = 'http://localhost:8080';
+
+const ensureProtocol = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith('localhost') || trimmed.startsWith('127.0.0.1')) {
+    return `http://${trimmed}`;
+  }
+
+  return `https://${trimmed}`;
+};
+
+const stripTrailingSlash = (value: string) => value.replace(/\/+$/, '');
+
+const getInitialServerUrl = (): string => {
+  const envUrl = process.env.REACT_APP_SOCKET_URL?.trim();
+
+  if (typeof window === 'undefined') {
+    return envUrl || DEFAULT_LOCAL_URL;
+  }
+
+  try {
+    const storedUrl = window.localStorage.getItem(STORAGE_KEY);
+    if (storedUrl) {
+      return storedUrl;
+    }
+  } catch (error) {
+    console.error('Failed to read stored server url', error);
+  }
+
+  if (envUrl) {
+    return envUrl;
+  }
+
+  const { protocol, host, hostname } = window.location;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return DEFAULT_LOCAL_URL;
+  }
+
+  return `${protocol}//${host}`;
+};
+
+const normalizeServerUrl = (value: string): string => {
+  const withProtocol = ensureProtocol(value);
+  if (!withProtocol) {
+    return '';
+  }
+
+  return stripTrailingSlash(withProtocol);
+};
 
 // Create the context with default values
 const SocketContext = createContext<SocketContextType>({
   socket: null,
-  isConnected: false
+  isConnected: false,
+  serverUrl: DEFAULT_LOCAL_URL,
+  connectionError: null,
+  updateServerUrl: () => {},
+  reconnect: () => {}
 });
 
 // Create a provider component
@@ -27,55 +103,105 @@ interface SocketProviderProps {
 export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   const [socket, setSocket] = useState<ReturnType<typeof socketIOClient> | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [serverUrl, setServerUrl] = useState<string>(() => getInitialServerUrl());
+  const [refreshToken, setRefreshToken] = useState(0);
+  const activeConnectionId = useRef(0);
 
-  // Initialize socket connection when component mounts
+  const updateServerUrl = useCallback((url: string) => {
+    const normalized = normalizeServerUrl(url) || DEFAULT_LOCAL_URL;
+    setServerUrl(normalized);
+
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(STORAGE_KEY, normalized);
+      } catch (error) {
+        console.error('Failed to persist server url', error);
+      }
+    }
+  }, []);
+
+  const reconnect = useCallback(() => {
+    setRefreshToken(prev => prev + 1);
+  }, []);
+
   useEffect(() => {
-    const SOCKET_URL = 'http://localhost:8080';
-    console.log('Creating socket connection to:', SOCKET_URL);
-    
+    const connectionId = activeConnectionId.current + 1;
+    activeConnectionId.current = connectionId;
+    const url = normalizeServerUrl(serverUrl) || DEFAULT_LOCAL_URL;
+
+    console.log('Creating socket connection to:', url);
+
     // Create socket instance
-    const socketInstance = socketIOClient(SOCKET_URL, {
+    const socketInstance = socketIOClient(url, {
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      timeout: 10000
+      timeout: 15000,
+      transports: ['websocket', 'polling']
     });
-    
-    // Set up event listeners
-    socketInstance.on('connect', () => {
+
+    const handleConnect = () => {
       console.log('Socket connected with ID:', socketInstance.id);
       setIsConnected(true);
-    });
-    
-    socketInstance.on('disconnect', () => {
+      setConnectionError(null);
+    };
+
+    const handleDisconnect = () => {
       console.log('Socket disconnected');
       setIsConnected(false);
-    });
-    
-    socketInstance.on('connect_error', (error: Error) => {
+    };
+
+    const handleError = (error: Error) => {
       console.error('Socket connection error:', error);
+      setConnectionError(error.message || 'Unable to connect to server');
       setIsConnected(false);
-    });
-    
+    };
+
+    // Set up event listeners
+    socketInstance.on('connect', handleConnect);
+    socketInstance.on('disconnect', handleDisconnect);
+    socketInstance.on('connect_error', handleError);
+    socketInstance.io.on('error', handleError);
+
     socketInstance.on('debug', (data: DebugMessage) => {
       console.log('Debug message from server:', data);
     });
-    
+
     // Save the socket instance
     setSocket(socketInstance);
-    
-    // Clean up on unmount
+
+    // Clean up on unmount or url change
     return () => {
       console.log('Cleaning up socket connection');
+      socketInstance.off('connect', handleConnect);
+      socketInstance.off('disconnect', handleDisconnect);
+      socketInstance.off('connect_error', handleError);
+      socketInstance.io.off('error', handleError);
       socketInstance.disconnect();
+
+      // prevent stale socket being referenced
+      if (activeConnectionId.current === connectionId) {
+        setSocket(null);
+        setIsConnected(false);
+      }
     };
-  }, []);
+  }, [serverUrl, refreshToken]);
+
+  const contextValue = useMemo(() => ({
+    socket,
+    isConnected,
+    serverUrl,
+    connectionError,
+    updateServerUrl,
+    reconnect
+  }), [socket, isConnected, serverUrl, connectionError, updateServerUrl, reconnect]);
 
   return (
-    <SocketContext.Provider value={{ socket, isConnected }}>
+    <SocketContext.Provider value={contextValue}>
       {children}
     </SocketContext.Provider>
   );
 };
 
 // Custom hook to use the socket context
-export const useSocket = () => useContext(SocketContext); 
+export const useSocket = () => useContext(SocketContext);

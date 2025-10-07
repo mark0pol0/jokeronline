@@ -1,17 +1,166 @@
 .multiplayer-container {
-  max-width: 600px;
-  margin: 0 auto;
-  background-color: rgba(255, 255, 255, 0.95);
-  border-radius: 12px;
+  width: min(100%, 440px);
+  margin: 16px auto;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(245, 245, 245, 0.95));
+  border-radius: 16px;
   padding: 24px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .multiplayer-container h2 {
   text-align: center;
-  margin-bottom: 24px;
+  color: #2c2c2c;
+  font-size: 26px;
+  margin: 0;
+}
+
+.connection-banner {
+  background: rgba(248, 248, 248, 0.95);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-left: 4px solid transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.connection-banner.connected {
+  border-left-color: #4caf50;
+}
+
+.connection-banner.disconnected {
+  border-left-color: #ef5350;
+}
+
+.connection-details {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #e0e0e0;
+  font-weight: 600;
+  font-size: 0.85rem;
   color: #333;
-  font-size: 28px;
+}
+
+.connection-banner.connected .status-pill {
+  background: rgba(76, 175, 80, 0.2);
+  color: #2e7d32;
+}
+
+.connection-banner.disconnected .status-pill {
+  background: rgba(239, 83, 80, 0.15);
+  color: #c62828;
+}
+
+.server-url {
+  font-size: 0.85rem;
+  color: #555;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #2962ff;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  font-size: 0.9rem;
+}
+
+.link-button:hover,
+.link-button:focus {
+  color: #0039cb;
+}
+
+.connection-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #c62828;
+}
+
+.connection-modal {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: #ffffff;
+  border-radius: 16px;
+  width: min(100%, 420px);
+  padding: 24px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-content h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #2c2c2c;
+}
+
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #444;
+}
+
+.modal-input {
+  padding: 12px 16px;
+  border: 2px solid #d9d9d9;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.modal-input:focus {
+  border-color: #2962ff;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(41, 98, 255, 0.15);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
 }
 
 .multiplayer-form {
@@ -44,6 +193,7 @@
   border-color: #6b98ff;
   outline: none;
 }
+
 
 .button-group {
   display: flex;
@@ -665,3 +815,34 @@
   display: inline-block;
   border: 1px solid rgba(255, 255, 255, 0.5);
 } 
+@media (max-width: 600px) {
+  .multiplayer-container {
+    margin: 12px;
+    padding: 20px;
+    gap: 20px;
+  }
+
+  .connection-actions {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .button-group {
+    flex-direction: column;
+  }
+
+  .button-group button {
+    width: 100%;
+  }
+
+  .code-box {
+    width: 100%;
+    min-width: unset;
+    font-size: 24px;
+  }
+
+  .multiplayer-form {
+    gap: 16px;
+  }
+}
