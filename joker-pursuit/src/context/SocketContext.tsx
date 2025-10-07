@@ -28,6 +28,8 @@ interface SocketContextType {
 
 const STORAGE_KEY = 'joker-pursuit.server-url';
 const DEFAULT_LOCAL_URL = 'http://localhost:8080';
+const MISSING_PRODUCTION_SERVER_ERROR =
+  'No multiplayer server is configured. Add REACT_APP_SOCKET_URL or use "Configure server" to connect when you are ready.';
 
 const ensureProtocol = (value: string) => {
   const trimmed = value.trim();
@@ -68,12 +70,14 @@ const getInitialServerUrl = (): string => {
     return envUrl;
   }
 
-  const { protocol, host, hostname } = window.location;
+  const { hostname } = window.location;
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return DEFAULT_LOCAL_URL;
   }
 
-  return `${protocol}//${host}`;
+  // In hosted environments (e.g. Vercel) we wait until the user provides a
+  // backend URL so the page can render without any socket attempts.
+  return '';
 };
 
 const normalizeServerUrl = (value: string): string => {
@@ -101,20 +105,27 @@ interface SocketProviderProps {
 }
 
 export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
+  const initialUrl = useMemo(() => getInitialServerUrl(), []);
   const [socket, setSocket] = useState<ReturnType<typeof socketIOClient> | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [serverUrl, setServerUrl] = useState<string>(() => getInitialServerUrl());
+  const [serverUrl, setServerUrl] = useState<string>(initialUrl);
+  const [shouldConnect, setShouldConnect] = useState<boolean>(() => Boolean(normalizeServerUrl(initialUrl)));
   const [refreshToken, setRefreshToken] = useState(0);
   const activeConnectionId = useRef(0);
 
   const updateServerUrl = useCallback((url: string) => {
-    const normalized = normalizeServerUrl(url) || DEFAULT_LOCAL_URL;
+    const normalized = normalizeServerUrl(url);
     setServerUrl(normalized);
+    setShouldConnect(Boolean(normalized));
 
     if (typeof window !== 'undefined') {
       try {
-        window.localStorage.setItem(STORAGE_KEY, normalized);
+        if (normalized) {
+          window.localStorage.setItem(STORAGE_KEY, normalized);
+        } else {
+          window.localStorage.removeItem(STORAGE_KEY);
+        }
       } catch (error) {
         console.error('Failed to persist server url', error);
       }
@@ -122,13 +133,36 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   }, []);
 
   const reconnect = useCallback(() => {
+    const normalized = normalizeServerUrl(serverUrl);
+
+    if (!normalized) {
+      setShouldConnect(false);
+      setConnectionError(MISSING_PRODUCTION_SERVER_ERROR);
+      setSocket(null);
+      setIsConnected(false);
+      return;
+    }
+
+    setShouldConnect(true);
+    setConnectionError(null);
     setRefreshToken(prev => prev + 1);
-  }, []);
+  }, [serverUrl]);
 
   useEffect(() => {
     const connectionId = activeConnectionId.current + 1;
     activeConnectionId.current = connectionId;
-    const url = normalizeServerUrl(serverUrl) || DEFAULT_LOCAL_URL;
+    const url = normalizeServerUrl(serverUrl);
+
+    if (!shouldConnect || !url) {
+      if (!url) {
+        console.warn('Socket server URL is not configured. Skipping connection attempt.');
+      }
+
+      setSocket(null);
+      setIsConnected(false);
+      setConnectionError(shouldConnect && !url ? MISSING_PRODUCTION_SERVER_ERROR : null);
+      return undefined;
+    }
 
     console.log('Creating socket connection to:', url);
 
@@ -185,7 +219,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
         setIsConnected(false);
       }
     };
-  }, [serverUrl, refreshToken]);
+  }, [serverUrl, refreshToken, shouldConnect]);
 
   const contextValue = useMemo(() => ({
     socket,
