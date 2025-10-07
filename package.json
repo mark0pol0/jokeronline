@@ -1,0 +1,8 @@
+{
+  "name": "jokeronline",
+  "private": true,
+  "scripts": {
+    "postinstall": "npm install --prefix joker-pursuit",
+    "build": "npm install --prefix joker-pursuit && npm run build --prefix joker-pursuit"
+  }
+}

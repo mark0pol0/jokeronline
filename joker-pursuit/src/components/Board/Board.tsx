@@ -1,6 +1,19 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Board as BoardModel, BoardSpace, BoardSection } from '../../models/BoardModel';
+import { Board as BoardModel, BoardSpace } from '../../models/BoardModel';
 import './Board.css';
+
+// Helper function to safely convert different space collections into an array
+const getSpacesArray = (spaceCollection: BoardModel['allSpaces'] | undefined): BoardSpace[] => {
+  if (!spaceCollection) {
+    return [];
+  }
+
+  if (spaceCollection instanceof Map) {
+    return Array.from(spaceCollection.values());
+  }
+
+  return Object.values(spaceCollection);
+};
 
 interface BoardProps {
   board: BoardModel;
@@ -47,51 +60,16 @@ const Board: React.FC<BoardProps> = ({
   // State for background circle size
   const [backgroundCircleSize, setBackgroundCircleSize] = useState<number>(1300);
   
-  // Calculate the ideal initial scale to fit the board nicely in the viewport
-  const calculateIdealScale = useCallback(() => {
-    if (!containerRef.current) return 1;
-    
-    // Get the container dimensions
-    const containerWidth = containerRef.current.clientWidth;
-    const containerHeight = containerRef.current.clientHeight;
-    
-    // The board's base size is 1400px
-    const boardSize = backgroundCircleSize;
-    
-    // Calculate scale to fit with a small margin (95% of available space)
-    const scaleX = (containerWidth * 0.95) / boardSize;
-    const scaleY = (containerHeight * 0.95) / boardSize;
-    
-    // Use the smaller scale to ensure the board fits entirely
-    return Math.min(scaleX, scaleY);
-  }, [backgroundCircleSize]);
-
   // Center and scale the board appropriately on mount and when board dimensions change
   useEffect(() => {
     if (!containerRef.current || !boardRef.current) return;
-    
-    // Calculate ideal scale
-    const idealScale = calculateIdealScale();
-    
+
     // Center the board in the container
     setTransform({
       scale: 1, // Base scale is 1, actual zoom applied in render
       translate: { x: 0, y: 0 } // Center position
     });
-  }, [calculateIdealScale, backgroundCircleSize]);
-  
-  // Helper function to safely get all spaces as an array
-  const getSpacesArray = (spaceCollection: any): BoardSpace[] => {
-    if (!spaceCollection) return [];
-    
-    if (spaceCollection instanceof Map) {
-      // Client-side Map object
-      return Array.from(spaceCollection.values());
-    } else {
-      // Server-side serialized object
-      return Object.values(spaceCollection);
-    }
-  };
+  }, [backgroundCircleSize]);
   
   // Calculate the true center of the board based on castle positions
   const calculateTrueCenter = useCallback(() => {
@@ -122,27 +100,18 @@ const Board: React.FC<BoardProps> = ({
     };
     
     return center;
-  }, [board.allSpaces, getSpacesArray]);
+  }, [board.allSpaces]);
 
   // Calculate the size for the background circle
   const calculateBackgroundCircleSize = useCallback(() => {
     if (!board.allSpaces || board.allSpaces.size === 0) {
       return 800; // Fallback default size
     }
-    
+
     // Find the maximum distance from the center to any space
     let maxDistance = 0;
-    let spaces: BoardSpace[] = [];
-    
-    // Get all spaces from the board
-    if (board.allSpaces instanceof Map) {
-      spaces = Array.from(board.allSpaces.values());
-    } else {
-      spaces = Object.values(board.allSpaces);
-    }
-    
-    // Filter out starting spaces
-    spaces = spaces.filter(space => space.type !== 'starting');
+    const spaces = getSpacesArray(board.allSpaces)
+      .filter(space => space.type !== 'starting');
     
     for (const space of spaces) {
       if (!space.x || !space.y) continue;
@@ -261,22 +230,6 @@ const Board: React.FC<BoardProps> = ({
       observer.disconnect();
     };
   }, [zoomLevel]);
-
-  // Calculate dynamic board size based on number of players
-  const calculateBoardSize = useCallback(() => {
-    const numPlayers = board.sections.length;
-    const baseRadius = 600; // Increased base radius for the circular board
-    const minSpacing = 80; // Increased minimum space between slots for better visibility
-    
-    // Calculate required radius based on number of players
-    const circumference = numPlayers * minSpacing * 3; // 3 spaces per player section
-    const requiredRadius = circumference / (2 * Math.PI);
-    
-    // Use the larger of base radius or required radius
-    const radius = Math.max(baseRadius, requiredRadius);
-    
-    return radius;
-  }, [board.sections.length]);
 
   // Check for space collisions
   const detectCollisions = useCallback(() => {
@@ -424,18 +377,17 @@ const Board: React.FC<BoardProps> = ({
     };
   }, [handleMouseDown, handleMouseMove, handleMouseUp, handleTouchStart, handleTouchMove, handleTouchEnd]);
 
-  // Check for collisions and adjust board size on mount and when sections change
+  // Check for collisions and adjust board scale slightly on mount
   useEffect(() => {
-    const radius = calculateBoardSize();
     const collisions = detectCollisions();
-    
+
     if (collisions.length > 0) {
       setTransform(prev => ({
         ...prev,
         scale: prev.scale * 1.1
       }));
     }
-  }, [calculateBoardSize, detectCollisions]);
+  }, [detectCollisions]);
 
   // Get colors of pegs on a space
   const getPegColors = (space: BoardSpace) => {
@@ -764,9 +716,6 @@ const Board: React.FC<BoardProps> = ({
     const distance = Math.sqrt(dx * dx + dy * dy);
     
     // Calculate unit vector (normalized direction)
-    const unitX = dx / distance;
-    const unitY = dy / distance;
-    
     // Calculate angle between the points
     const angle = Math.atan2(dy, dx);
     
@@ -953,10 +902,6 @@ const Board: React.FC<BoardProps> = ({
           // Distribute pegs in a circle within the starting circle
           // Improved calculations for better visual distribution
           const totalPegs = startingCircle.pegs.length;
-          const pegRadius = Math.min(65, 30 + totalPegs * 5); // Adjust radius based on number of pegs
-          const angle = (index * (360 / totalPegs)) * Math.PI / 180;
-          const x = Math.cos(angle) * pegRadius;
-          const y = Math.sin(angle) * pegRadius;
           
           return renderPeg(pegId, color, index, totalPegs, startingSpace);
         })}
