@@ -1,26 +1,8 @@
 {
-  "builds": [
+  "rewrites": [
     {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "build"
-      }
-    }
-  ],
-  "routes": [
-    { "handle": "filesystem" },
-    {
-      "src": "/socket.io/(.*)",
-      "dest": "/socket.io/$1"
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
-    },
-    {
-      "src": "/.*",
-      "dest": "/index.html"
+      "source": "/((?!api|socket\\.io).*)",
+      "destination": "/index.html"
     }
   ]
 }
