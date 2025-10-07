@@ -3,7 +3,6 @@ import { useMultiplayer, MultiplayerPlayer } from '../../context/MultiplayerCont
 import { GameState } from '../../models/GameState';
 import { createBoard } from '../../models/BoardModel';
 import { Card, Rank, Suit } from '../../models/Card';
-import { CardSuit, CardRank } from '../../types/gameTypes';
 import GameController from '../Game/GameController';
 import './MultiplayerStyles.css';
 
@@ -27,11 +26,9 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isCurrentPlayerTurn, setIsCurrentPlayerTurn] = useState<boolean>(false);
   const [currentTurnPlayer, setCurrentTurnPlayer] = useState<string>('');
-  const [isColorSelectionDone, setIsColorSelectionDone] = useState<boolean>(false);
   const [selectedColors, setSelectedColors] = useState<Record<string, string>>({});
   const [gamePhase, setGamePhase] = useState<'setup' | 'colorSelection' | 'shuffling' | 'playing'>('colorSelection');
   const [gameControllerKey, setGameControllerKey] = useState<number>(0);
-  const [currentPlayerIndex, setCurrentPlayerIndex] = useState<number>(0);
 
   // Keep selected colors in sync with data from the server
   useEffect(() => {
@@ -191,8 +188,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
         setGameState(gameState);
         setGamePhase('playing');
         
-        // Set the current player 
-        setCurrentPlayerIndex(gameState.currentPlayerIndex);
+        // Set the current player
         setCurrentTurnPlayer(gameState.players[gameState.currentPlayerIndex]?.name || '');
         
         // Check if it's our turn
@@ -245,24 +241,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       socket.off('game-phase-changed', onGamePhaseChange);
       // socket.offAny();
     };
-  }, [isOnlineMode, playerId, socket]);
-
-  // This effect checks when all players have selected colors
-  useEffect(() => {
-    if (players.length > 0 && Object.keys(selectedColors).length > 0) {
-      // Check if all players have selected colors
-      const allPlayersHaveColors = players.every(
-        (player: MultiplayerPlayer) => selectedColors[player.id]
-      );
-      
-      setIsColorSelectionDone(allPlayersHaveColors);
-      console.log('Color selection status:', {
-        selectedColors,
-        allPlayersHaveColors,
-        players: players.map(p => p.id)
-      });
-    }
-  }, [players, selectedColors]);
+  }, [gameState, isOnlineMode, playerId, socket]);
 
   // Update game state on the server
   const updateGameState = (newGameState: GameState) => {
@@ -379,7 +358,6 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     console.log('Initial game state created:', initialGameState);
 
     setGameState(initialGameState);
-    setCurrentPlayerIndex(0);
     setCurrentTurnPlayer(playerStates[0]?.name || '');
     setIsCurrentPlayerTurn(playerStates[0]?.id === playerId);
     setGamePhase('playing');

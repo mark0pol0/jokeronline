@@ -159,7 +159,7 @@ const isSlot8Blocked = (gameState: GameState, playerSection: BoardSection): bool
 // Helper function to find an available home slot for a player
 const findAvailableHomeSlot = (gameState: GameState, playerId: string): BoardSpace | undefined => {
   // Find the player's section
-  const playerSection = gameState.board.sections.find(section => 
+  const playerSection = gameState.board.sections.find(section =>
     section.playerIds?.includes(playerId)
   );
   
@@ -175,37 +175,37 @@ const findAvailableHomeSlot = (gameState: GameState, playerId: string): BoardSpa
   return homeSlots.find(slot => slot.pegs.length === 0);
 };
 
-// Helper function to find the original home slot for a peg
-const findOriginalHomeSlot = (gameState: GameState, pegId: string): BoardSpace | undefined => {
-  // Parse the peg ID to get the player ID and peg number
-  const [playerId, pegNumberStr] = pegId.split('-peg-');
-  const pegNumber = parseInt(pegNumberStr);
-  
-  // Find the player's section
-  const playerSection = gameState.board.sections.find(section => 
-    section.playerIds?.includes(playerId)
-  );
-  
-  if (!playerSection) return undefined;
-  
-  // Find all home slots in the player's section, sorted by index
-  const homeSlots = Array.from(gameState.board.allSpaces.values())
-    .filter(space => 
-      space.sectionIndex === playerSection.index && 
-      space.type === 'home'
-    )
-    .sort((a, b) => a.index - b.index);
-  
-  // The peg's original slot is its number minus 1 (since peg numbers are 1-based but indices are 0-based)
-  const originalSlotIndex = pegNumber - 1;
-  
-  // Return the original slot if it exists
-  if (homeSlots[originalSlotIndex]) {
-    return homeSlots[originalSlotIndex];
+// Build a lookup of normal board spaces keyed by section index for fast access inside movement loops
+const buildNormalSpacesBySection = (gameState: GameState): Map<number, BoardSpace[]> => {
+  const normalSpacesBySection = new Map<number, BoardSpace[]>();
+  const allSpaces = getAllSpacesAsArray(gameState);
+
+  allSpaces.forEach(space => {
+    if (space.sectionIndex === undefined || space.type !== 'normal') {
+      return;
+    }
+
+    const existing = normalSpacesBySection.get(space.sectionIndex) ?? [];
+    existing.push(space);
+    normalSpacesBySection.set(space.sectionIndex, existing);
+  });
+
+  normalSpacesBySection.forEach(spaces => {
+    spaces.sort((a, b) => a.index - b.index);
+  });
+
+  return normalSpacesBySection;
+};
+
+const getNormalSpacesForSection = (
+  normalSpacesBySection: Map<number, BoardSpace[]>,
+  sectionIndex: number | undefined
+): BoardSpace[] => {
+  if (sectionIndex === undefined) {
+    return [];
   }
-  
-  // If the original slot can't be found, fall back to any available slot
-  return homeSlots.find(slot => slot.pegs.length === 0);
+
+  return normalSpacesBySection.get(sectionIndex) ?? [];
 };
 
 // Helper function to handle joker bump
@@ -376,7 +376,6 @@ const getNineMoves = (
     // If peg is on a normal space, entrance, or corner
     if (pegSpace.type === 'normal' || pegSpace.type === 'entrance' || pegSpace.type === 'corner') {
       // Check for special slots
-      const isHomeEntrance = pegSpace.type === 'entrance' && pegSpace.index === 8;
       const isCastleEntrance1 = pegSpace.type === 'entrance' && pegSpace.index === 3;
       
       // Get the player's section - this is where their castle is
@@ -465,8 +464,6 @@ const getNineMoves = (
           section.playerIds?.includes(player.id)
         );
         
-        let castleEntryAdded = false;
-        
         if (playerSection && pegSpace.sectionIndex === playerSection.index && direction === 'forward') {
           // Only check castle entry for forward movement in player's own section
           // Check if this move would pass by the castle entrance
@@ -521,7 +518,6 @@ const getNineMoves = (
                     }
                   });
                   
-                  castleEntryAdded = true;
                 }
               }
             }
@@ -887,7 +883,8 @@ const getSevenSplitMoves = (
   firstMovePegId?: string
 ): Move[] => {
   const moves: Move[] = [];
-  
+  const normalSpacesBySection = buildNormalSpacesBySection(gameState);
+
   console.log(`[getSevenSplitMoves] Called with steps=${steps}, isSecondMove=${isSecondMove}, firstMovePegId=${firstMovePegId}`);
   console.log(`[getSevenSplitMoves] Player ${player.name} has ${player.pegs.length} pegs: ${player.pegs.join(', ')}`);
   
@@ -1047,10 +1044,8 @@ const getSevenSplitMoves = (
       
       // Calculate final position after steps
       while (remainingSteps > 0) {
-        // Find max index in current section
-        const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
-          .filter(s => s.sectionIndex === currentSectionIndex && s.type === 'normal')
-          .map(s => s.index));
+        const normalSpaces = getNormalSpacesForSection(normalSpacesBySection, currentSectionIndex);
+        const maxIndex = normalSpaces.length > 0 ? normalSpaces[normalSpaces.length - 1].index : 0;
         
         console.log(`[getSevenSplitMoves] Max index in section ${currentSectionIndex} is ${maxIndex}`);
         
@@ -1160,16 +1155,15 @@ const getSevenSplitMoves = (
             else if (pegSpace.sectionIndex !== playerSection.index) {
               console.log(`[getSevenSplitMoves] Cross-section movement: calculating castle entry steps`);
               // Calculate steps to reach player's section
-              let stepsToPlayerSection = 0;
               let sectionIndex = pegSpace.sectionIndex;
               let indexInSection = pegSpace.index;
               let tempSteps = steps;
               
               while (sectionIndex !== playerSection.index && tempSteps > 0) {
-                // Get max index in current section
-                const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
-                  .filter(s => s.sectionIndex === sectionIndex && s.type === 'normal')
-                  .map(s => s.index));
+                const normalSpacesForSection = getNormalSpacesForSection(normalSpacesBySection, sectionIndex);
+                const maxIndex = normalSpacesForSection.length > 0
+                  ? normalSpacesForSection[normalSpacesForSection.length - 1].index
+                  : 0;
                 
                 // Calculate steps needed to exit this section
                 const stepsToNextSection = (maxIndex - indexInSection) + 1;
@@ -1706,6 +1700,7 @@ const getJokerMoves = (gameState: GameState, player: Player, card: Card): Move[]
 
 const getAceMoves = (gameState: GameState, player: Player, card: Card): Move[] => {
   const moves: Move[] = [];
+  const normalSpacesBySection = buildNormalSpacesBySection(gameState);
   
   // For each of the player's pegs
   player.pegs.forEach(pegId => {
@@ -1831,10 +1826,8 @@ const getAceMoves = (gameState: GameState, player: Player, card: Card): Move[] =
                                  pegSpace.sectionIndex === playerSection.index && 
                                  pegSpace.index === 3;
       
-      // Find max index in current section
-      const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
-        .filter(s => s.sectionIndex === currentSectionIndex && s.type === 'normal')
-        .map(s => s.index));
+      const normalSpaces = getNormalSpacesForSection(normalSpacesBySection, currentSectionIndex);
+      const maxIndex = normalSpaces.length > 0 ? normalSpaces[normalSpaces.length - 1].index : 0;
       
       // If at end of section, move to next section's slot 0
       if (currentIndex === maxIndex) {
@@ -1911,6 +1904,7 @@ const getAceMoves = (gameState: GameState, player: Player, card: Card): Move[] =
 
 const getFaceCardMoves = (gameState: GameState, player: Player, card: Card): Move[] => {
   const moves: Move[] = [];
+  const normalSpacesBySection = buildNormalSpacesBySection(gameState);
   
   // For each of the player's pegs
   player.pegs.forEach(pegId => {
@@ -2022,10 +2016,8 @@ const getFaceCardMoves = (gameState: GameState, player: Player, card: Card): Mov
       
       // Calculate final position after 10 steps
       while (remainingSteps > 0) {
-        // Find max index in current section
-        const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
-          .filter(s => s.sectionIndex === currentSectionIndex && s.type === 'normal')
-          .map(s => s.index));
+        const normalSpaces = getNormalSpacesForSection(normalSpacesBySection, currentSectionIndex);
+        const maxIndex = normalSpaces.length > 0 ? normalSpaces[normalSpaces.length - 1].index : 0;
         
         // If we can complete the move in current section
         if (currentIndex + remainingSteps <= maxIndex) {
@@ -2078,6 +2070,7 @@ const getFaceCardMoves = (gameState: GameState, player: Player, card: Card): Mov
 // Regular number cards (2, 3, 4, 5, 6, 10)
 const getRegularMoves = (gameState: GameState, player: Player, card: Card): Move[] => {
   const moves: Move[] = [];
+  const normalSpacesBySection = buildNormalSpacesBySection(gameState);
   
   // For each of the player's pegs
   player.pegs.forEach(pegId => {
@@ -2206,10 +2199,8 @@ const getRegularMoves = (gameState: GameState, player: Player, card: Card): Move
     
     // Simulate the move step by step to check if we pass the player's castle entrance
     while (pathSteps > 0) {
-      // Find max index in current section
-      const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
-        .filter(s => s.sectionIndex === pathSectionIndex && s.type === 'normal')
-        .map(s => s.index));
+      const normalSpaces = getNormalSpacesForSection(normalSpacesBySection, pathSectionIndex);
+      const maxIndex = normalSpaces.length > 0 ? normalSpaces[normalSpaces.length - 1].index : 0;
       
       console.log(`[getRegularMoves] Checking path: section=${pathSectionIndex}, index=${pathIndex}, steps=${pathSteps}, playerSection=${playerSectionIndex}`);
       
@@ -2268,9 +2259,8 @@ const getRegularMoves = (gameState: GameState, player: Player, card: Card): Move
     // Calculate final position after movement
     while (remainingSteps > 0) {
       // Find max index in current section
-      const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
-        .filter(s => s.sectionIndex === currentSectionIndex && s.type === 'normal')
-        .map(s => s.index));
+      const normalSpaces = getNormalSpacesForSection(normalSpacesBySection, currentSectionIndex);
+      const maxIndex = normalSpaces.length > 0 ? normalSpaces[normalSpaces.length - 1].index : 0;
       
       // If we can complete the move in current section
       if (currentIndex + remainingSteps <= maxIndex) {
@@ -2368,10 +2358,8 @@ const getRegularMoves = (gameState: GameState, player: Player, card: Card): Move
           
           // Calculate steps to reach player's section
           while (currentSec !== playerSection.index) {
-            // Find max index in current section
-            const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
-              .filter(s => s.sectionIndex === currentSec && s.type === 'normal')
-              .map(s => s.index));
+            const normalSpaces = getNormalSpacesForSection(normalSpacesBySection, currentSec);
+            const maxIndex = normalSpaces.length > 0 ? normalSpaces[normalSpaces.length - 1].index : 0;
             
             // Steps to end of current section
             const stepsToEndOfSection = maxIndex - currentIdx + 1;
@@ -2449,6 +2437,7 @@ const getRegularMoves = (gameState: GameState, player: Player, card: Card): Move
 // Special implementation for Eight - reverse movement
 const getEightMoves = (gameState: GameState, player: Player, card: Card): Move[] => {
   const moves: Move[] = [];
+  const normalSpacesBySection = buildNormalSpacesBySection(gameState);
   
   console.log(`[getEightMoves] Processing for player ${player.id} with card ${card.id}`);
   
@@ -2552,10 +2541,8 @@ const getEightMoves = (gameState: GameState, player: Player, card: Card): Move[]
                 remainingSteps -= stepsInCurrentSection;
                 currentSectionIndex = (currentSectionIndex - 1 + gameState.board.sections.length) % gameState.board.sections.length;
                 
-                // Find max index in the new section
-                const maxIndex = Math.max(...Array.from(gameState.board.allSpaces.values())
-                  .filter(s => s.sectionIndex === currentSectionIndex && s.type === 'normal')
-                  .map(s => s.index));
+                const normalSpaces = getNormalSpacesForSection(normalSpacesBySection, currentSectionIndex);
+                const maxIndex = normalSpaces.length > 0 ? normalSpaces[normalSpaces.length - 1].index : 0;
                 
                 currentIndex = maxIndex;
                 
@@ -2620,17 +2607,15 @@ const getEightMoves = (gameState: GameState, player: Player, card: Card): Move[]
           const stepsInCurrentSection = currentIndex + 1; // +1 because we count the move to previous section
           remainingSteps -= stepsInCurrentSection;
           currentSectionIndex = (currentSectionIndex - 1 + gameState.board.sections.length) % gameState.board.sections.length;
-          
-          // Find max index in the new section
-          const normalSpacesInSection = Array.from(gameState.board.allSpaces.values())
-            .filter(s => s.sectionIndex === currentSectionIndex && s.type === 'normal');
-          
+
+          const normalSpacesInSection = getNormalSpacesForSection(normalSpacesBySection, currentSectionIndex);
+
           if (normalSpacesInSection.length === 0) {
             console.log(`[getEightMoves] No normal spaces found in section ${currentSectionIndex}`);
             return; // Skip this move if we can't find normal spaces in the section
           }
-          
-          const maxIndex = Math.max(...normalSpacesInSection.map(s => s.index));
+
+          const maxIndex = normalSpacesInSection[normalSpacesInSection.length - 1].index;
           currentIndex = maxIndex;
           
           console.log(`[getEightMoves] Moved to previous section ${currentSectionIndex} at index ${currentIndex} with ${remainingSteps} steps left`);

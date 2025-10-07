@@ -28,9 +28,7 @@ const App: React.FC = () => {
   
   // State
   const [gamePhase, setGamePhase] = useState<GamePhase>('home');
-  const [onlineMode, setOnlineMode] = useState(false);
   const [playerNames, setPlayerNames] = useState(['Player 1', 'Player 2']);
-  const [playerIds] = useState(['player-1', 'player-2']);
   const [playerColors, setPlayerColors] = useState<Record<string, string>>({
     'player-1': PLAYER_COLORS[0].value, // Red for first player
     'player-2': PLAYER_COLORS[1].value  // Blue for second player
@@ -109,13 +107,11 @@ const App: React.FC = () => {
   };
 
   const handleStartOnlineGame = () => {
-    setOnlineMode(true);
     setGamePhase('online');
   };
 
   const handleReturnToHome = () => {
     setGamePhase('home');
-    setOnlineMode(false);
   };
 
   return (
