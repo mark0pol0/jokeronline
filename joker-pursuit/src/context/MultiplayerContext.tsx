@@ -83,8 +83,10 @@ interface MultiplayerProviderProps {
   children: ReactNode;
 }
 
+const CONNECTION_ERROR_PREFIX = 'Unable to reach the server';
+
 export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ children }) => {
-  const { socket, isConnected } = useSocket();
+  const { socket, isConnected, serverUrl, connectionError } = useSocket();
   const [isOnlineMode, setIsOnlineMode] = useState(false);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [roomCode, setRoomCode] = useState<string | null>(null);
@@ -96,6 +98,22 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
 
   const clearError = () => setError(null);
   
+  // Surface connection level errors inside the multiplayer flow
+  useEffect(() => {
+    setError(prev => {
+      if (connectionError) {
+        const message = `${CONNECTION_ERROR_PREFIX} at ${serverUrl}. ${connectionError}`;
+        return prev === message ? prev : message;
+      }
+
+      if (isConnected && prev && prev.startsWith(CONNECTION_ERROR_PREFIX)) {
+        return null;
+      }
+
+      return prev;
+    });
+  }, [connectionError, serverUrl, isConnected]);
+
   // Set up socket event listeners
   useEffect(() => {
     if (!socket) return;
@@ -164,7 +182,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
     }
     
     if (!isConnected) {
-      setError('Not connected to server. Please check your connection and try again.');
+      setError('Not connected to server. Please verify the Socket.IO backend URL and try again.');
       return Promise.reject(new Error('Not connected to server'));
     }
     
@@ -207,7 +225,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
     }
     
     if (!isConnected) {
-      setError('Not connected to server. Please check your connection and try again.');
+      setError('Not connected to server. Please verify the Socket.IO backend URL and try again.');
       return Promise.reject(new Error('Not connected to server'));
     }
     
