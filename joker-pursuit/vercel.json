@@ -1,0 +1,17 @@
+{
+  "routes": [
+    { "handle": "filesystem" },
+    {
+      "src": "/socket.io/(.*)",
+      "dest": "/socket.io/$1"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/.*",
+      "dest": "/index.html"
+    }
+  ]
+}
