@@ -28,6 +28,8 @@ interface SocketContextType {
 
 const STORAGE_KEY = 'joker-pursuit.server-url';
 const DEFAULT_LOCAL_URL = 'http://localhost:8080';
+const MISSING_PRODUCTION_SERVER_ERROR =
+  'No multiplayer server is configured. Set REACT_APP_SOCKET_URL or configure the server URL in the multiplayer settings.';
 
 const ensureProtocol = (value: string) => {
   const trimmed = value.trim();
@@ -68,12 +70,15 @@ const getInitialServerUrl = (): string => {
     return envUrl;
   }
 
-  const { protocol, host, hostname } = window.location;
+  const { hostname } = window.location;
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return DEFAULT_LOCAL_URL;
   }
 
-  return `${protocol}//${host}`;
+  // In hosted environments (e.g. Vercel) we require the backend URL to be
+  // provided explicitly so that requests are not sent to the static frontend
+  // deployment, which would trigger DEPLOYMENT_NOT_FOUND responses.
+  return '';
 };
 
 const normalizeServerUrl = (value: string): string => {
@@ -109,12 +114,16 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   const activeConnectionId = useRef(0);
 
   const updateServerUrl = useCallback((url: string) => {
-    const normalized = normalizeServerUrl(url) || DEFAULT_LOCAL_URL;
+    const normalized = normalizeServerUrl(url);
     setServerUrl(normalized);
 
     if (typeof window !== 'undefined') {
       try {
-        window.localStorage.setItem(STORAGE_KEY, normalized);
+        if (normalized) {
+          window.localStorage.setItem(STORAGE_KEY, normalized);
+        } else {
+          window.localStorage.removeItem(STORAGE_KEY);
+        }
       } catch (error) {
         console.error('Failed to persist server url', error);
       }
@@ -128,7 +137,15 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   useEffect(() => {
     const connectionId = activeConnectionId.current + 1;
     activeConnectionId.current = connectionId;
-    const url = normalizeServerUrl(serverUrl) || DEFAULT_LOCAL_URL;
+    const url = normalizeServerUrl(serverUrl);
+
+    if (!url) {
+      console.warn('Socket server URL is not configured. Skipping connection attempt.');
+      setSocket(null);
+      setIsConnected(false);
+      setConnectionError(MISSING_PRODUCTION_SERVER_ERROR);
+      return undefined;
+    }
 
     console.log('Creating socket connection to:', url);
 

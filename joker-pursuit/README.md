@@ -72,6 +72,28 @@ cd server
 npm start
 ```
 
+### Configuring a hosted deployment
+
+When deploying the React client to a static hosting provider such as Vercel,
+the multiplayer features need a persistent Socket.IO backend. The frontend will
+**not** automatically use the same origin in production—doing so causes Vercel
+to respond with `DEPLOYMENT_NOT_FOUND` because the static deployment has no
+Socket.IO server attached. Instead, provide the public URL of your backend:
+
+1. Deploy the server (the code in the `server` directory) to a platform that
+   supports long-lived WebSocket connections (Render, Railway, Fly.io, etc.).
+2. Expose the server over HTTPS, e.g. `https://joker-pursuit-server.example.com`.
+3. Configure the React app with the backend URL:
+   - Locally: create a `.env.local` file with
+     `REACT_APP_SOCKET_URL=https://joker-pursuit-server.example.com`.
+   - On Vercel (or any host): add the same variable in the project settings so
+     it is available at build time.
+4. Redeploy the frontend. You can also adjust the URL at runtime through the
+   “Configure server” dialog in the multiplayer connection banner.
+
+Without this configuration the client will stay disconnected and display the
+message “No multiplayer server is configured.”
+
 ## How to Play
 
 ### Local Game

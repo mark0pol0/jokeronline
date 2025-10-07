@@ -34,11 +34,13 @@ const ConnectionStatus: React.FC = () => {
     }, 400);
   };
 
+  const displayUrl = serverUrl || 'No server configured';
+
   return (
     <div className={`connection-banner ${isConnected ? 'connected' : 'disconnected'}`}>
       <div className="connection-details">
         <span className="status-pill">{isConnected ? 'Connected' : 'Disconnected'}</span>
-        <span className="server-url" title={serverUrl}>{serverUrl}</span>
+        <span className="server-url" title={displayUrl}>{displayUrl}</span>
       </div>
       <div className="connection-actions">
         <button
