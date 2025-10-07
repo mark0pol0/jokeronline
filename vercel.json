@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "joker-pursuit/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "build"
+      }
+    }
+  ],
+  "routes": [
+    { "handle": "filesystem" },
+    {
+      "src": "^/(?!api|socket\\.io)(.*)$",
+      "dest": "/index.html"
+    }
+  ]
+}
