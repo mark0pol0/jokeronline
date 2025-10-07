@@ -28,7 +28,6 @@ const ConnectionStatus: React.FC = () => {
     event.preventDefault();
     updateServerUrl(draftUrl);
     setHasSaved(true);
-    reconnect();
     setTimeout(() => {
       setIsDialogOpen(false);
     }, 400);
