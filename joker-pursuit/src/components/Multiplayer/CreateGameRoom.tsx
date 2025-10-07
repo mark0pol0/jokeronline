@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useMultiplayer } from '../../context/MultiplayerContext';
+import ConnectionStatus from './ConnectionStatus';
 import './MultiplayerStyles.css';
 
 interface CreateGameRoomProps {
@@ -35,6 +36,7 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
 
   return (
     <div className="multiplayer-container">
+      <ConnectionStatus />
       <h2>Create Game Room</h2>
       
       {!roomCode ? (
