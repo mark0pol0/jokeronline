@@ -36,6 +36,11 @@ app.get('/', (req, res) => {
   res.send('Joker Pursuit Game Server is running!');
 });
 
+// Lightweight health check endpoint for hosting platforms
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ ok: true });
+});
+
 // Create HTTP server
 const server = http.createServer(app);
 
