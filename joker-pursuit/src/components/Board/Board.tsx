@@ -888,6 +888,7 @@ const Board: React.FC<BoardProps> = ({
     // Multiplayer can place pegs in section-specific starting spaces.
     // Aggregate them so the shared center circle shows everyone.
     const allStartingPegs = startingSpaces.flatMap(space => space.pegs || []);
+    if (allStartingPegs.length === 0) return null;
     
     // Create a simplified space object for the starting circle pegs
     const startingSpace = {

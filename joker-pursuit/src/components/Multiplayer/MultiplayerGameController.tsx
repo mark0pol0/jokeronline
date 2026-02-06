@@ -321,11 +321,15 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       const hand = deck.splice(0, 5);
       const pegIds = Array.from({ length: 5 }, (_, pegIndex) => `${player.id}-peg-${pegIndex + 1}`);
 
-      const sectionStartId = `section${index + 1}_starting`;
-      const startingSpace = board.allSpaces.get(sectionStartId);
-      if (startingSpace) {
-        startingSpace.pegs = [...pegIds];
-      }
+      // Match local-game behavior: start pegs in each section's home slots.
+      const homeSlots = Array.from(board.allSpaces.values())
+        .filter((space) => space.sectionIndex === index && space.type === 'home')
+        .sort((a, b) => a.index - b.index);
+      pegIds.forEach((pegId, pegIndex) => {
+        if (homeSlots[pegIndex]) {
+          homeSlots[pegIndex].pegs.push(pegId);
+        }
+      });
 
       return {
         id: player.id,
