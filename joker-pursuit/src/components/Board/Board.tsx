@@ -425,8 +425,18 @@ const Board: React.FC<BoardProps> = ({
     // Calculate offset based on index and total number of pegs
     let offsetX = 0;
     let offsetY = 0;
-    
-    if (total <= 1) {
+
+    if (space.type === 'starting') {
+      // Spread larger starting-circle stacks in concentric rings.
+      const perRing = 12;
+      const ringIndex = Math.floor(index / perRing);
+      const indexInRing = index % perRing;
+      const pegsInThisRing = Math.min(total - ringIndex * perRing, perRing);
+      const radius = 14 + ringIndex * 15;
+      const angle = (2 * Math.PI * indexInRing) / Math.max(pegsInThisRing, 1) - Math.PI / 2;
+      offsetX = Math.cos(angle) * radius;
+      offsetY = Math.sin(angle) * radius;
+    } else if (total <= 1) {
       // Center single peg
       offsetX = 0;
       offsetY = 0;
@@ -871,8 +881,13 @@ const Board: React.FC<BoardProps> = ({
   
   // Render starting circle
   const renderStartingCircle = () => {
+    const startingSpaces = getSpacesArray(board.allSpaces).filter(space => space.type === 'starting');
     const startingCircle = findStartingCircle();
-    if (!startingCircle) return null;
+    if (!startingCircle || startingSpaces.length === 0) return null;
+
+    // Multiplayer can place pegs in section-specific starting spaces.
+    // Aggregate them so the shared center circle shows everyone.
+    const allStartingPegs = startingSpaces.flatMap(space => space.pegs || []);
     
     // Create a simplified space object for the starting circle pegs
     const startingSpace = {
@@ -882,7 +897,7 @@ const Board: React.FC<BoardProps> = ({
       y: startingCircle.y,
       index: 0,
       label: 'Start',
-      pegs: startingCircle.pegs,
+      pegs: allStartingPegs,
       sectionIndex: -1
     };
     
@@ -895,13 +910,13 @@ const Board: React.FC<BoardProps> = ({
         }}
       >
         {/* Render pegs in starting circle with better distribution */}
-        {startingCircle.pegs.map((pegId: string, index: number) => {
-          const [playerId] = pegId.split('-');
+        {allStartingPegs.map((pegId: string, index: number) => {
+          const playerId = pegId.split('-peg-')[0];
           const color = playerColors[playerId] || '#CCCCCC';
           
           // Distribute pegs in a circle within the starting circle
           // Improved calculations for better visual distribution
-          const totalPegs = startingCircle.pegs.length;
+          const totalPegs = allStartingPegs.length;
           
           return renderPeg(pegId, color, index, totalPegs, startingSpace);
         })}

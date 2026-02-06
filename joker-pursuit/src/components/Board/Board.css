@@ -322,7 +322,14 @@
 }
 
 .starting-circle {
-  display: none;
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 8;
 }
 
 /* Scale down board for mobile in portrait orientation */
