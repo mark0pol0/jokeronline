@@ -39,6 +39,187 @@ const serializeGameStateForServer = (state: GameState): GameState => {
   };
 };
 
+const cloneGameState = (state: GameState): GameState => {
+  const serializableState = serializeGameStateForServer(state);
+  return normalizeGameStateForClient(JSON.parse(JSON.stringify(serializableState)) as GameState);
+};
+
+interface RecentMove {
+  id: string;
+  playerId: string;
+  playerName: string;
+  card?: Card;
+  movedPegId?: string;
+  fromSpaceId?: string;
+  toSpaceId?: string;
+  occurredAt: number;
+}
+
+interface RecentMoveHighlight {
+  id: string;
+  fromSpaceId?: string;
+  toSpaceId?: string;
+  playerColor?: string;
+}
+
+const getPegSpaceMap = (state: GameState | null): Map<string, string> => {
+  const pegMap = new Map<string, string>();
+  if (!state?.board?.allSpaces) {
+    return pegMap;
+  }
+
+  state.board.allSpaces.forEach((space, spaceId) => {
+    (space.pegs || []).forEach((pegId: string) => {
+      pegMap.set(pegId, spaceId);
+    });
+  });
+
+  return pegMap;
+};
+
+const inferRecentMove = (previousState: GameState | null, nextState: GameState): RecentMove | null => {
+  if (!previousState?.players?.length || !nextState?.players?.length) {
+    return null;
+  }
+
+  const previousActivePlayer = previousState.players[previousState.currentPlayerIndex];
+  if (!previousActivePlayer) {
+    return null;
+  }
+
+  const previousPegSpaces = getPegSpaceMap(previousState);
+  const nextPegSpaces = getPegSpaceMap(nextState);
+  const previousMoveCount = previousState.moves?.length || 0;
+  const nextMoveCount = nextState.moves?.length || 0;
+  const latestRecordedMove = nextMoveCount > previousMoveCount
+    ? nextState.moves[nextMoveCount - 1]
+    : undefined;
+
+  const inferredActor = latestRecordedMove
+    ? nextState.players.find(player => player.id === latestRecordedMove.playerId) || previousActivePlayer
+    : previousActivePlayer;
+
+  const movedPegs: Array<{ pegId: string; fromSpaceId: string; toSpaceId: string }> = [];
+  previousPegSpaces.forEach((fromSpaceId, pegId) => {
+    const toSpaceId = nextPegSpaces.get(pegId);
+    if (toSpaceId && toSpaceId !== fromSpaceId) {
+      movedPegs.push({ pegId, fromSpaceId, toSpaceId });
+    }
+  });
+
+  const recordedPegMove = latestRecordedMove
+    ? {
+        pegId: latestRecordedMove.pegId,
+        fromSpaceId: previousPegSpaces.get(latestRecordedMove.pegId),
+        toSpaceId: latestRecordedMove.destinations?.[0] || nextPegSpaces.get(latestRecordedMove.pegId)
+      }
+    : undefined;
+
+  const preferredPegMove = movedPegs.find(({ pegId }) =>
+    pegId.startsWith(`${inferredActor.id}-peg-`)
+  );
+  const primaryPegMove = recordedPegMove?.fromSpaceId && recordedPegMove?.toSpaceId
+    ? {
+        pegId: recordedPegMove.pegId,
+        fromSpaceId: recordedPegMove.fromSpaceId,
+        toSpaceId: recordedPegMove.toSpaceId
+      }
+    : (preferredPegMove || movedPegs[0]);
+
+  const previousDiscardCount = previousState.discardPile?.length || 0;
+  const nextDiscardCount = nextState.discardPile?.length || 0;
+  let playedCard: Card | undefined;
+
+  if (nextDiscardCount > previousDiscardCount) {
+    playedCard = nextState.discardPile[nextDiscardCount - 1];
+  }
+
+  if (!playedCard) {
+    const nextVersionOfPlayer = nextState.players.find(player => player.id === inferredActor.id);
+    if (nextVersionOfPlayer) {
+      const previousVersionOfPlayer = previousState.players.find(player => player.id === inferredActor.id);
+      const nextHandIds = new Set(nextVersionOfPlayer.hand.map(card => card.id));
+      playedCard = previousVersionOfPlayer?.hand.find(card => !nextHandIds.has(card.id));
+    }
+  }
+
+  if (!playedCard && latestRecordedMove?.cardId) {
+    const previousVersionOfPlayer = previousState.players.find(player => player.id === inferredActor.id);
+    playedCard = previousVersionOfPlayer?.hand.find(card => card.id === latestRecordedMove.cardId);
+  }
+
+  if (!playedCard && latestRecordedMove?.cardId) {
+    const topDiscardCard = nextState.discardPile?.[nextState.discardPile.length - 1];
+    if (topDiscardCard?.id === latestRecordedMove.cardId) {
+      playedCard = topDiscardCard;
+    }
+  }
+
+  if (!playedCard && !primaryPegMove) {
+    return null;
+  }
+
+  const now = Date.now();
+  return {
+    id: `${inferredActor.id}-${now}`,
+    playerId: inferredActor.id,
+    playerName: inferredActor.name,
+    card: playedCard,
+    movedPegId: primaryPegMove?.pegId,
+    fromSpaceId: primaryPegMove?.fromSpaceId,
+    toSpaceId: primaryPegMove?.toSpaceId,
+    occurredAt: now
+  };
+};
+
+const formatCardRank = (rank?: Rank): string => {
+  if (!rank) {
+    return '?';
+  }
+
+  switch (rank) {
+    case 'ace':
+      return 'A';
+    case 'jack':
+      return 'J';
+    case 'queen':
+      return 'Q';
+    case 'king':
+      return 'K';
+    case 'joker':
+      return 'JOKER';
+    default:
+      return rank.toUpperCase();
+  }
+};
+
+const getSuitSymbol = (suit?: Suit): string => {
+  switch (suit) {
+    case 'hearts':
+      return '♥';
+    case 'diamonds':
+      return '♦';
+    case 'clubs':
+      return '♣';
+    case 'spades':
+      return '♠';
+    default:
+      return '';
+  }
+};
+
+const getCardToneClass = (card?: Card): 'red' | 'black' | 'joker' => {
+  if (!card || card.rank === 'joker') {
+    return 'joker';
+  }
+
+  if (card.suit === 'hearts' || card.suit === 'diamonds') {
+    return 'red';
+  }
+
+  return 'black';
+};
+
 const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ onBack }) => {
   const { 
     isOnlineMode,
@@ -58,6 +239,8 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const [selectedColors, setSelectedColors] = useState<Record<string, string>>({});
   const [gamePhase, setGamePhase] = useState<'setup' | 'colorSelection' | 'shuffling' | 'playing'>('colorSelection');
   const [gameControllerKey, setGameControllerKey] = useState<number>(0);
+  const [recentMove, setRecentMove] = useState<RecentMove | null>(null);
+  const [recentMoveHighlight, setRecentMoveHighlight] = useState<RecentMoveHighlight | undefined>(undefined);
 
   // Keep selected colors in sync with data from the server
   useEffect(() => {
@@ -109,9 +292,27 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       // Simple flag to check if it's this player's turn
       const isMyTurn = normalizedGameState.players[normalizedGameState.currentPlayerIndex]?.id === playerId;
       console.log(`👤 Turn status: ${isMyTurn ? "It's MY turn" : "It's NOT my turn"}`);
+
+      const inferredMove = inferRecentMove(gameState, normalizedGameState);
+      if (inferredMove) {
+        const movePlayer = normalizedGameState.players.find(player => player.id === inferredMove.playerId);
+        setRecentMove(inferredMove);
+        setRecentMoveHighlight(
+          inferredMove.toSpaceId
+            ? {
+                id: inferredMove.id,
+                fromSpaceId: inferredMove.fromSpaceId,
+                toSpaceId: inferredMove.toSpaceId,
+                playerColor: movePlayer?.color
+              }
+            : undefined
+        );
+      } else {
+        setRecentMoveHighlight(undefined);
+      }
       
       // Set key game state variables
-      setGameState(normalizedGameState);
+      setGameState(cloneGameState(normalizedGameState));
       setCurrentTurnPlayer(normalizedGameState.players[normalizedGameState.currentPlayerIndex]?.name || '');
       setIsCurrentPlayerTurn(isMyTurn);
       
@@ -122,41 +323,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
 
     // Handle moves from other players
     const onPlayerMove = (data: any) => {
-        console.log('📣 Received player move:', data);
-        
-        if (!data || !data.playerId || !gameState) {
-            console.error('❌ Invalid move data received:', data);
-            return;
-        }
-        
-        // Is this move from another player?
-        const isOtherPlayerMove = data.playerId !== playerId;
-        console.log(`🎮 Move from ${isOtherPlayerMove ? 'another' : 'this'} player`);
-        
-        // Apply the move to our local game state
-        try {
-            // Clone the current game state to avoid direct mutations
-            const updatedGameState = JSON.parse(JSON.stringify(gameState));
-            
-            // Apply the move data (card played, peg moved, etc.)
-            // This would need to be implemented based on your game logic
-            if (data.cardId && data.pegId && data.toPosition !== undefined) {
-                console.log(`🎲 Processing move: Card ${data.cardId} to move peg ${data.pegId} to position ${data.toPosition}`);
-                
-                // Update the game state here based on the move
-                // This is a simplified example:
-                // 1. Find the peg and update its position
-                // 2. Remove the card from player's hand
-                
-                // After applying the move, update the game state
-                setGameState(normalizeGameStateForClient(updatedGameState));
-                
-                // Force a complete re-render of the GameController component
-                setGameControllerKey(prev => prev + 1);
-            }
-        } catch (error) {
-            console.error('❌ Error applying move:', error);
-        }
+      console.log('📣 Received player move:', data);
     };
 
     // Handle shuffled cards
@@ -204,8 +371,10 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
         });
         
         // Update our local state
-        setGameState(gameState);
+        setGameState(cloneGameState(gameState));
         setGamePhase('playing');
+        setRecentMove(null);
+        setRecentMoveHighlight(undefined);
         
         // Set the current player
         setCurrentTurnPlayer(gameState.players[gameState.currentPlayerIndex]?.name || '');
@@ -266,7 +435,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const updateGameState = (newGameState: GameState) => {
     if (!isOnlineMode || !roomId) return;
     sendGameStateUpdate(newGameState);
-    setGameState(normalizeGameStateForClient(newGameState));
+    setGameState(cloneGameState(normalizeGameStateForClient(newGameState)));
   };
 
   // Handle player making a move
@@ -390,7 +559,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
 
     console.log('Initial game state created:', initialGameStateForServer);
 
-    setGameState(initialGameStateForClient);
+    setGameState(cloneGameState(initialGameStateForClient));
     setCurrentTurnPlayer(playerStates[0]?.name || '');
     setIsCurrentPlayerTurn(playerStates[0]?.id === playerId);
     setGamePhase('playing');
@@ -669,6 +838,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     if (gameState && gameState.players && gameState.players.length > 0) {
       const currentPlayerIndex = gameState.currentPlayerIndex || 0;
       const currentPlayer = gameState.players[currentPlayerIndex];
+      const recentOpponentMove = recentMove && recentMove.playerId !== playerId ? recentMove : null;
       
       const isCurrentPlayerTurn: boolean = !!(currentPlayer && currentPlayer.id === playerId);
 
@@ -714,6 +884,39 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
               </div>
             </div>
           )}
+
+          {recentOpponentMove && (
+            <aside
+              className={`opponent-play-panel ${isCurrentPlayerTurn ? 'during-your-turn' : 'during-opponent-turn'}`}
+              key={recentOpponentMove.id}
+            >
+              <p className="opponent-play-label">{recentOpponentMove.playerName} played</p>
+              <div className={`opponent-play-card ${getCardToneClass(recentOpponentMove.card)}`}>
+                {recentOpponentMove.card ? (
+                  <>
+                    <div className="opponent-play-card-top">
+                      <span>{formatCardRank(recentOpponentMove.card.rank)}</span>
+                      <span>{getSuitSymbol(recentOpponentMove.card.suit)}</span>
+                    </div>
+                    <div className="opponent-play-card-center">
+                      {recentOpponentMove.card.rank === 'joker'
+                        ? '★'
+                        : getSuitSymbol(recentOpponentMove.card.suit)}
+                    </div>
+                    <div className="opponent-play-card-bottom">
+                      <span>{getSuitSymbol(recentOpponentMove.card.suit)}</span>
+                      <span>{formatCardRank(recentOpponentMove.card.rank)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="opponent-play-card-center">Card</div>
+                )}
+              </div>
+              <p className="opponent-play-caption">
+                {recentOpponentMove.movedPegId ? 'Peg movement highlighted on board.' : 'Move in progress...'}
+              </p>
+            </aside>
+          )}
           
           <GameController 
             key={gameControllerKey}
@@ -725,7 +928,9 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
             isCurrentPlayerTurn={isCurrentPlayerTurn}
             onMove={handleMove}
             onUpdateGameState={updateGameState}
-            gameStateOverride={gameState}
+            gameStateOverride={cloneGameState(gameState)}
+            localPlayerId={playerId || undefined}
+            recentMoveHighlight={recentMoveHighlight}
           />
           
           <button className="leave-game-button" onClick={handleLeaveGame}>

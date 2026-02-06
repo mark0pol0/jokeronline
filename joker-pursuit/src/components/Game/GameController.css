@@ -451,6 +451,14 @@
   gap: 10px;
 }
 
+.multiplayer-hand-caption {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(225, 241, 252, 0.84);
+}
+
 .reveal-hand-button {
   min-height: 46px;
   min-width: 168px;

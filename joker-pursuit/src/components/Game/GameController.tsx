@@ -20,6 +20,13 @@ interface GameControllerProps {
   onMove?: (moveData: any) => void;
   onUpdateGameState?: (gameState: GameState) => void;
   gameStateOverride?: GameState;
+  localPlayerId?: string;
+  recentMoveHighlight?: {
+    id: string;
+    fromSpaceId?: string;
+    toSpaceId?: string;
+    playerColor?: string;
+  };
 }
 
 // Add new interface for nine card state
@@ -136,7 +143,9 @@ const GameController: React.FC<GameControllerProps> = ({
   isCurrentPlayerTurn,
   onMove,
   onUpdateGameState,
-  gameStateOverride
+  gameStateOverride,
+  localPlayerId,
+  recentMoveHighlight
 }) => {
   // Initialize game state
   const [gameState, setGameState] = useState<GameState>(() => {
@@ -525,6 +534,14 @@ const GameController: React.FC<GameControllerProps> = ({
   // Get current player
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
   const currentPlayerColor = playerColors[currentPlayer?.id] || '#0f6b74';
+  const localMultiplayerPlayer = isMultiplayer && localPlayerId
+    ? gameState.players.find(player => player.id === localPlayerId)
+    : undefined;
+  const handOwner = isMultiplayer ? (localMultiplayerPlayer || currentPlayer) : currentPlayer;
+  const handOwnerColor = playerColors[handOwner?.id] || currentPlayerColor;
+  const shouldShowDiscardButton = isMultiplayer
+    ? Boolean(isCurrentPlayerTurn) && canUseDiscardButton(gameState, currentPlayer)
+    : canUseDiscardButton(gameState, currentPlayer) && showCards;
   
   // Add new state for floating elements
   const [floatingElements, setFloatingElements] = useState<FloatingElement[]>([]);
@@ -2849,6 +2866,7 @@ const GameController: React.FC<GameControllerProps> = ({
                 selectableSpaceIds={selectableSpaceIds}
                 selectablePegIds={selectablePegIds}
                 playerColors={playerColors}
+                moveHighlight={recentMoveHighlight}
                 zoomLevel={zoomLevel * responsiveScale} // Combine user zoom with responsive scale
               />
               
@@ -3010,17 +3028,25 @@ const GameController: React.FC<GameControllerProps> = ({
                 Reveal Hand
               </button>
             )}
+
+            {isMultiplayer && handOwner && (
+              <p className="multiplayer-hand-caption">
+                {isCurrentPlayerTurn
+                  ? `Your hand: ${handOwner.name}`
+                  : `Your hand while waiting: ${handOwner.name}`}
+              </p>
+            )}
             
             <CardHand 
-              cards={currentPlayer?.hand}
+              cards={handOwner?.hand || []}
               selectedCardId={selectedCardId}
               onCardSelect={handleCardSelect}
               showCards={isMultiplayer ? true : showCards}
-              playerColor={currentPlayerColor}
+              playerColor={handOwnerColor}
             />
             
             {/* Discard button */}
-            {canUseDiscardButton(gameState, currentPlayer) && showCards && (
+            {shouldShowDiscardButton && (
               <button 
                 className="discard-hand-button"
                 onClick={handleDiscardAndRedraw}

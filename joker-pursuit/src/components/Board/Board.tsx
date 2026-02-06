@@ -24,6 +24,12 @@ interface BoardProps {
   onPegSelect: (pegId: string) => void;
   selectedPegId: string | null;
   currentPlayerId: string;
+  moveHighlight?: {
+    id: string;
+    fromSpaceId?: string;
+    toSpaceId?: string;
+    playerColor?: string;
+  };
   zoomLevel: number;
 }
 
@@ -46,6 +52,7 @@ const Board: React.FC<BoardProps> = ({
   onPegSelect,
   selectedPegId,
   currentPlayerId,
+  moveHighlight,
   zoomLevel
 }) => {
   const [transform, setTransform] = useState<BoardTransform>({ scale: 1, translate: { x: 0, y: 0 } });
@@ -59,6 +66,7 @@ const Board: React.FC<BoardProps> = ({
 
   // State for background circle size
   const [backgroundCircleSize, setBackgroundCircleSize] = useState<number>(1300);
+  const [activeMoveHighlight, setActiveMoveHighlight] = useState<BoardProps['moveHighlight']>();
   
   // Center and scale the board appropriately on mount and when board dimensions change
   useEffect(() => {
@@ -419,6 +427,69 @@ const Board: React.FC<BoardProps> = ({
     
     return isSelectable;
   };
+
+  const getSpaceById = useCallback((spaceId?: string) => {
+    if (!spaceId || !board.allSpaces) {
+      return undefined;
+    }
+
+    if (board.allSpaces instanceof Map) {
+      return board.allSpaces.get(spaceId);
+    }
+
+    return (board.allSpaces as Record<string, BoardSpace>)[spaceId];
+  }, [board.allSpaces]);
+
+  useEffect(() => {
+    if (!moveHighlight?.id || !moveHighlight.toSpaceId) {
+      return;
+    }
+
+    const toSpace = getSpaceById(moveHighlight.toSpaceId);
+    if (!toSpace) {
+      return;
+    }
+
+    setActiveMoveHighlight(moveHighlight);
+    const timerId = window.setTimeout(() => {
+      setActiveMoveHighlight(current =>
+        current?.id === moveHighlight.id ? undefined : current
+      );
+    }, 1100);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [getSpaceById, moveHighlight]);
+
+  const activeMoveGeometry = (() => {
+    if (!activeMoveHighlight?.toSpaceId) {
+      return null;
+    }
+
+    const toSpace = getSpaceById(activeMoveHighlight.toSpaceId);
+    if (!toSpace) {
+      return null;
+    }
+
+    const fromSpace = getSpaceById(activeMoveHighlight.fromSpaceId) || toSpace;
+
+    const dx = toSpace.x - fromSpace.x;
+    const dy = toSpace.y - fromSpace.y;
+    const distance = Math.sqrt((dx ** 2) + (dy ** 2));
+    const angle = Math.atan2(dy, dx);
+
+    return {
+      fromX: fromSpace.x,
+      fromY: fromSpace.y,
+      toX: toSpace.x,
+      toY: toSpace.y,
+      deltaX: dx,
+      deltaY: dy,
+      distance,
+      angle
+    };
+  })();
   
   // Render a peg
   const renderPeg = (pegId: string, pegColor: string, index: number, total: number, space: BoardSpace) => {
@@ -531,6 +602,12 @@ const Board: React.FC<BoardProps> = ({
     let classes = `board-space space-${space.type} players-${playerCount}`;
     if (isSelectable(space.id)) {
       classes += ' selectable';
+    }
+    if (activeMoveHighlight?.fromSpaceId === space.id) {
+      classes += ' recent-move-from';
+    }
+    if (activeMoveHighlight?.toSpaceId === space.id) {
+      classes += ' recent-move-to';
     }
     return classes;
   };
@@ -1150,6 +1227,51 @@ const Board: React.FC<BoardProps> = ({
             backgroundColor: '#FFFFFF'
           }}
         />
+
+        {activeMoveGeometry && (
+          <div className="peg-move-overlay" aria-hidden="true">
+            {activeMoveGeometry.distance > 2 && (
+              <>
+                <div
+                  className="peg-move-trail"
+                  style={{
+                    left: `${activeMoveGeometry.fromX}px`,
+                    top: `${activeMoveGeometry.fromY}px`,
+                    width: `${activeMoveGeometry.distance}px`,
+                    transform: `translateY(-50%) rotate(${activeMoveGeometry.angle}rad)`,
+                    ['--trail-color' as string]: activeMoveHighlight?.playerColor || '#ffc36a'
+                  }}
+                />
+                <div
+                  className="peg-move-ghost"
+                  style={{
+                    left: `${activeMoveGeometry.fromX}px`,
+                    top: `${activeMoveGeometry.fromY}px`,
+                    ['--move-x' as string]: `${activeMoveGeometry.deltaX}px`,
+                    ['--move-y' as string]: `${activeMoveGeometry.deltaY}px`,
+                    ['--peg-color' as string]: activeMoveHighlight?.playerColor || '#ffc36a'
+                  }}
+                />
+              </>
+            )}
+            <div
+              className="peg-move-ripple start"
+              style={{
+                left: `${activeMoveGeometry.fromX}px`,
+                top: `${activeMoveGeometry.fromY}px`,
+                ['--trail-color' as string]: activeMoveHighlight?.playerColor || '#ffc36a'
+              }}
+            />
+            <div
+              className="peg-move-ripple end"
+              style={{
+                left: `${activeMoveGeometry.toX}px`,
+                top: `${activeMoveGeometry.toY}px`,
+                ['--trail-color' as string]: activeMoveHighlight?.playerColor || '#ffc36a'
+              }}
+            />
+          </div>
+        )}
         
         {/* Render all spaces (excluding starting circle) */}
         {getAllSpaces().map(space => (

@@ -724,6 +724,93 @@
   color: rgba(223, 239, 251, 0.88);
 }
 
+.opponent-play-panel {
+  position: absolute;
+  left: 12px;
+  top: 200px;
+  z-index: 56;
+  width: min(164px, calc(100% - 24px));
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(198, 223, 243, 0.2);
+  background: linear-gradient(160deg, rgba(19, 36, 51, 0.86), rgba(14, 28, 41, 0.82));
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  animation: opponent-play-enter 280ms ease;
+}
+
+.opponent-play-panel.during-your-turn {
+  border-color: rgba(255, 202, 147, 0.48);
+}
+
+.opponent-play-panel.during-opponent-turn {
+  border-color: rgba(168, 208, 236, 0.42);
+}
+
+.opponent-play-label {
+  margin: 0;
+  font-size: 0.76rem;
+  color: rgba(222, 239, 252, 0.86);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.opponent-play-card {
+  width: 76px;
+  height: 104px;
+  border-radius: 10px;
+  border: 1px solid rgba(232, 244, 254, 0.78);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 8px 14px rgba(0, 0, 0, 0.32),
+    inset 0 1px 1px rgba(255, 255, 255, 0.9);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: 7px;
+}
+
+.opponent-play-card-top,
+.opponent-play-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.opponent-play-card-bottom {
+  transform: rotate(180deg);
+}
+
+.opponent-play-card-center {
+  display: grid;
+  place-items: center;
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+
+.opponent-play-card.red {
+  color: #be2f2f;
+}
+
+.opponent-play-card.black {
+  color: #202a36;
+}
+
+.opponent-play-card.joker {
+  color: #5f2f90;
+}
+
+.opponent-play-caption {
+  margin: 0;
+  font-size: 0.78rem;
+  color: rgba(212, 231, 246, 0.9);
+  text-align: center;
+}
+
 .loading-dots::after {
   content: '';
   animation: loading-dots 1.4s infinite;
@@ -778,6 +865,17 @@
   }
 }
 
+@keyframes opponent-play-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 900px) {
   .game-header {
     width: calc(100% - 12px);
@@ -786,6 +884,10 @@
 
   .player-waiting-overlay {
     top: 126px;
+  }
+
+  .opponent-play-panel {
+    top: 172px;
   }
 }
 
@@ -823,6 +925,13 @@
     position: static;
     max-width: 100%;
     margin: 88px 8px 0;
+  }
+
+  .opponent-play-panel {
+    position: static;
+    width: calc(100% - 16px);
+    margin: 10px 8px 0;
+    max-width: 220px;
   }
 
   .leave-game-button {
