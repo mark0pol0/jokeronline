@@ -65,9 +65,9 @@ const ConnectionStatus: React.FC = () => {
 
       {isDialogOpen && (
         <div className="connection-modal" role="dialog" aria-modal="true">
-          <div className="modal-content">
-            <h3>Server settings</h3>
-            <p>Enter the base URL for your Socket.IO backend.</p>
+          <div className="connection-modal-card">
+            <h3 className="connection-modal-title">Server Settings</h3>
+            <p className="connection-modal-description">Enter the base URL for your Socket.IO backend.</p>
             <form onSubmit={handleSubmit} className="modal-form">
               <label htmlFor="serverUrl" className="modal-label">
                 Server URL

@@ -524,6 +524,7 @@ const GameController: React.FC<GameControllerProps> = ({
   
   // Get current player
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  const currentPlayerColor = playerColors[currentPlayer?.id] || '#0f6b74';
   
   // Add new state for floating elements
   const [floatingElements, setFloatingElements] = useState<FloatingElement[]>([]);
@@ -2738,10 +2739,10 @@ const GameController: React.FC<GameControllerProps> = ({
           {isShuffling ? (
             <div className="shuffle-animation-container shuffling">
               <div className="card-deck"></div>
-              <div className="card"></div>
-              <div className="card"></div>
-              <div className="card"></div>
-              <div className="card"></div>
+              <div className="shuffle-card"></div>
+              <div className="shuffle-card"></div>
+              <div className="shuffle-card"></div>
+              <div className="shuffle-card"></div>
             </div>
           ) : (
             <button 
@@ -2778,50 +2779,19 @@ const GameController: React.FC<GameControllerProps> = ({
   };
 
   return (
-    <div 
-      className="game-controller"
-      style={{
-        background: 'radial-gradient(circle, #4a0505 0%, #240000 100%)',
-        height: '100vh',
-        width: '100vw',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0
-      }}
-    >
-      <div 
-        className="game-container"
-        style={{
-          background: 'transparent',
-          height: '100%',
-          width: '100%',
-          display: 'flex',
-          flexDirection: 'column'
-        }}
-      >
+    <div className="game-controller">
+      <div className="game-container">
         {/* NEW TOP PANEL for turn indicator and controls */}
-        <div 
-          className="top-panel"
-          style={{ 
-            background: 'rgba(255, 255, 255, 0.1)',
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)'
-          }}
-        >
+        <div className="top-panel">
           {/* Empty div for spacing */}
-          <div style={{ width: 100 }}></div>
+          <div className="top-panel-spacer" aria-hidden="true"></div>
           
           {/* Player turn indicator */}
           <div 
             className="player-turn-indicator"
-            style={{ 
-              color: playerColors[gameState?.players[gameState?.currentPlayerIndex]?.id],
-              textShadow: `0 2px 4px rgba(0, 0, 0, 0.5), 0 0 10px ${playerColors[gameState?.players[gameState?.currentPlayerIndex]?.id]}` 
-            }}
+            style={{ '--turn-color': currentPlayerColor } as React.CSSProperties}
           >
-            {gameState?.players[gameState?.currentPlayerIndex]?.name}'s Turn
+            {currentPlayer?.name}'s Turn
           </div>
           
           {/* Dev Mode Toggle */}
@@ -2869,13 +2839,13 @@ const GameController: React.FC<GameControllerProps> = ({
         {/* Main game board area */}
         <div className="board-area">
           <div className="board-container-wrapper">
-            <div className="board-container" style={{ position: 'relative', width: '100%', height: '100%' }}>
+            <div className="board-container">
               <Board
                 board={gameState?.board}
                 onSpaceClick={handleSpaceSelect}
                 onPegSelect={handlePegSelect}
                 selectedPegId={selectedPegId}
-                currentPlayerId={gameState?.players[gameState?.currentPlayerIndex]?.id}
+                currentPlayerId={currentPlayer?.id}
                 selectableSpaceIds={selectableSpaceIds}
                 selectablePegIds={selectablePegIds}
                 playerColors={playerColors}
@@ -2923,16 +2893,7 @@ const GameController: React.FC<GameControllerProps> = ({
           {/* Card controls container - positioned at bottom of board area */}
           <div className="card-controls-container">
             {(promptMessage || bumpMessage) && (
-              <div 
-                className="prompt-message"
-                style={{ 
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
-                }}
-              >
+              <div className="prompt-message">
                 {promptMessage && <div>{promptMessage}</div>}
                 {bumpMessage && <div className="bump-message">{bumpMessage}</div>}
               </div>
@@ -2940,16 +2901,7 @@ const GameController: React.FC<GameControllerProps> = ({
             
             {/* Castle Entry prompt */}
             {castlePromptState.isActive && (
-              <div 
-                className="castle-choice-controls"
-                style={{ 
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
-                }}
-              >
+              <div className="castle-choice-controls">
                 <button
                   className="castle-choice-button enter"
                   onClick={() => handleCastleChoice(true)}
@@ -2974,16 +2926,7 @@ const GameController: React.FC<GameControllerProps> = ({
             )}
             
             {selectedCardId && gameState?.players[gameState?.currentPlayerIndex]?.hand.find(c => c.id === selectedCardId)?.rank === '9' && (
-              <div 
-                className="nine-card-controls"
-                style={{ 
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
-                }}
-              >
+              <div className="nine-card-controls">
                 {/* Initial option selection: Move 9 or Split 9 */}
                 {nineCardState.state === 'INITIAL' && !nineCardState.splitSelected && (
                   <>
@@ -3030,16 +2973,7 @@ const GameController: React.FC<GameControllerProps> = ({
             )}
             
             {selectedCardId && gameState?.players[gameState?.currentPlayerIndex]?.hand.find(c => c.id === selectedCardId)?.rank === '7' && (
-              <div 
-                className="seven-card-controls"
-                style={{ 
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
-                }}
-              >
+              <div className="seven-card-controls">
                 {!sevenCardState.isSplit && !sevenCardState.firstMoveSteps && (
                   <>
                     <button onClick={() => handleSevenCardOption('move')}>Move 1 peg forward 7</button>
@@ -3064,42 +2998,29 @@ const GameController: React.FC<GameControllerProps> = ({
         </div>
 
         {/* Bottom panel with cards */}
-        <div 
-          className="bottom-panel"
-          style={{ 
-            /* Removing panel styling to let cards float above background */
-            background: 'transparent',
-            backdropFilter: 'none',
-            WebkitBackdropFilter: 'none',
-            boxShadow: 'none',
-            borderTop: 'none'
-          }}
-        >
+        <div className="bottom-panel">
           <div className="card-hand-container">
             {/* Reveal Hand button (only show in local play when cards are hidden) */}
             {!isMultiplayer && !showCards && (
               <button 
                 className="reveal-hand-button"
                 onClick={handleRevealHand}
-                style={{ 
-                  backgroundColor: playerColors[gameState?.players[gameState?.currentPlayerIndex]?.id] || '#990000',
-                  boxShadow: `0 4px 12px ${playerColors[gameState?.players[gameState?.currentPlayerIndex]?.id] || '#990000'}4D`
-                }}
+                style={{ '--player-color': currentPlayerColor } as React.CSSProperties}
               >
                 Reveal Hand
               </button>
             )}
             
             <CardHand 
-              cards={gameState?.players[gameState?.currentPlayerIndex]?.hand}
+              cards={currentPlayer?.hand}
               selectedCardId={selectedCardId}
               onCardSelect={handleCardSelect}
               showCards={isMultiplayer ? true : showCards}
-              playerColor={playerColors[gameState?.players[gameState?.currentPlayerIndex]?.id] || '#990000'}
+              playerColor={currentPlayerColor}
             />
             
             {/* Discard button */}
-            {canUseDiscardButton(gameState, gameState?.players[gameState?.currentPlayerIndex]) && showCards && (
+            {canUseDiscardButton(gameState, currentPlayer) && showCards && (
               <button 
                 className="discard-hand-button"
                 onClick={handleDiscardAndRedraw}

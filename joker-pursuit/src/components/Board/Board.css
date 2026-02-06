@@ -5,22 +5,12 @@
   justify-content: center;
   align-items: center;
   overflow: hidden;
-  padding: 0;
-  margin: 0;
   position: relative;
   cursor: grab;
   user-select: none;
-  -webkit-user-select: none; /* Safari support */
+  -webkit-user-select: none;
+  touch-action: none;
   z-index: 1;
-  background: transparent;
-  touch-action: none; /* Prevents browser handling of touch gestures */
-  box-sizing: border-box; /* Ensure consistent box model */
-  border: none;
-  /* Prevent any background from showing through */
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  -webkit-transform: translate3d(0,0,0);
-  transform: translate3d(0,0,0);
 }
 
 .board-container.dragging {
@@ -35,50 +25,41 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 1400px; /* Base size for scaling */
+  width: 1400px;
   height: 1400px;
   transform: translate(-50%, -50%);
   transform-origin: center;
-  will-change: transform;
   display: flex;
   justify-content: center;
   align-items: center;
-  box-sizing: border-box; /* Ensure consistent box model */
-  background: transparent; /* Changed from white to transparent */
-  /* Prevent any background from showing through */
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
+  background: transparent;
+  overflow: visible;
   z-index: 2;
   transition: transform 0.1s ease;
-  overflow: visible;
+  will-change: transform;
 }
 
 .board-background-circle {
   position: absolute;
-  background: radial-gradient(circle, #ffffff 60%, #f5f5f5 100%);
   border-radius: 50%;
   z-index: 1;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2), inset 0 1px 3px rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(0, 0, 0, 0.05);
+  background:
+    radial-gradient(circle at 50% 35%, #fdfefe 0%, #f1f6fb 52%, #e6edf4 100%);
+  border: 2px solid rgba(168, 187, 209, 0.65);
+  box-shadow:
+    0 22px 40px rgba(8, 15, 23, 0.24),
+    inset 0 2px 8px rgba(255, 255, 255, 0.95);
   pointer-events: none;
-  transform-origin: center;
 }
 
 .board::before {
-  content: "";
+  content: '';
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 1px;
-  height: 1px;
-  background: transparent;
-  z-index: 1;
-  transform: translate(-50%, -50%);
+  inset: 86px;
+  border-radius: 50%;
+  border: 1px dashed rgba(76, 102, 131, 0.22);
   pointer-events: none;
-}
-
-.board::after {
-  display: none;
+  z-index: 1;
 }
 
 .board-section {
@@ -91,30 +72,28 @@
   position: absolute;
   width: 24px;
   height: 24px;
+  transform: translate(-50%, -50%);
   border-radius: 50%;
   display: flex;
   justify-content: center;
   align-items: center;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+  border: 2px solid rgba(236, 244, 251, 0.85);
+  box-shadow: 0 3px 7px rgba(8, 17, 27, 0.36);
+  transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
   z-index: 3;
-  transform: translate(-50%, -50%);
 }
 
 .board-space:hover {
   transform: translate(-50%, -50%) scale(1.1);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 5px 12px rgba(8, 17, 27, 0.46);
 }
 
 .space-normal {
-  background-color: #000000;
-  border: 2px solid rgba(255, 255, 255, 0.7);
+  background: linear-gradient(145deg, #294760 0%, #1d3348 100%);
 }
 
 .space-normal:hover {
-  background-color: #333333;
-  border-color: rgba(255, 255, 255, 0.9);
+  filter: brightness(1.08);
 }
 
 .space-starting {
@@ -122,99 +101,109 @@
 }
 
 .space-corner {
-  background-color: #664d00;
-  border: 2px solid #ffd54f;
+  background: linear-gradient(145deg, #9d7529 0%, #7a591e 100%);
 }
 
 .space-castle {
-  background-color: #1a3e1c;
-  border: 2px solid #81c784;
+  background: linear-gradient(145deg, #3f9968 0%, #2c7a51 100%);
 }
 
 .space-home {
-  background-color: #0d3b66;
-  border: 2px solid #64b5f6;
+  background: linear-gradient(145deg, #357ab3 0%, #285f8c 100%);
 }
 
 .space-entrance {
-  background-color: #4a1451;
-  border: 2px solid #ba68c8;
+  background: linear-gradient(145deg, #c57338 0%, #9f5626 100%);
 }
 
 .space-connector {
-  background-color: #663c00;
-  border: 2px solid #ffb74d;
+  background: linear-gradient(145deg, #8e6530 0%, #694923 100%);
 }
 
-.board-space.selectable {
-  animation: pulse 2s infinite;
-  cursor: pointer;
-  box-shadow: 0 0 10px 5px rgba(255, 255, 255, 0.7);
-  z-index: 5;
-}
-
+.board-space.selectable,
 .selectable {
-  animation: pulse 1.5s infinite;
-  box-shadow: 0 0 0 4px rgba(255, 193, 7, 0.7), 0 0 20px rgba(255, 193, 7, 0.5);
-  z-index: 5;
+  animation: space-pulse 1.35s infinite;
+  box-shadow:
+    0 0 0 5px rgba(255, 193, 112, 0.65),
+    0 0 20px rgba(255, 193, 112, 0.58);
+  z-index: 6;
 }
 
 .peg.selectable {
-  animation: pulse 1.5s infinite;
-  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.7), 0 0 15px rgba(255, 215, 0, 0.5);
-  z-index: 20;
+  animation: peg-pulse 1.2s infinite;
+  box-shadow:
+    0 0 0 3px rgba(255, 220, 167, 0.88),
+    0 0 16px rgba(255, 220, 167, 0.56);
 }
 
 .peg.in-selectable-space {
-  animation: pulse 1.5s infinite;
-  cursor: pointer;
-  z-index: 10; /* Make sure it's above the space */
-  border: 2px solid white;
+  border-color: rgba(255, 242, 218, 0.95);
 }
 
-@keyframes pulse {
+@keyframes space-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+    box-shadow:
+      0 0 0 0 rgba(255, 193, 112, 0.62),
+      0 0 8px rgba(255, 193, 112, 0.36);
   }
   70% {
-    box-shadow: 0 0 0 12px rgba(76, 175, 80, 0);
+    box-shadow:
+      0 0 0 14px rgba(255, 193, 112, 0),
+      0 0 14px rgba(255, 193, 112, 0.18);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+    box-shadow:
+      0 0 0 0 rgba(255, 193, 112, 0),
+      0 0 8px rgba(255, 193, 112, 0.36);
+  }
+}
+
+@keyframes peg-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.09);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 
 .selected {
-  border-color: #2196F3;
-  box-shadow: 0 0 12px #2196F3;
+  border-color: #77b8ff;
+  box-shadow: 0 0 0 4px rgba(119, 184, 255, 0.5), 0 0 12px rgba(119, 184, 255, 0.75);
 }
 
 .peg {
   position: absolute;
   width: 18px;
   height: 18px;
-  border-radius: 50%;
   margin: 2px;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, left 0.5s cubic-bezier(0.4, 0, 0.2, 1), top 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  border-radius: 50%;
+  border: 2px solid rgba(242, 248, 253, 0.95);
+  box-shadow:
+    0 3px 7px rgba(6, 12, 19, 0.42),
+    inset 0 1px 2px rgba(255, 255, 255, 0.4);
+  transition: transform 170ms ease, box-shadow 170ms ease, left 420ms cubic-bezier(0.4, 0, 0.2, 1), top 420ms cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 10;
-  border: 2px solid rgba(255, 255, 255, 0.7);
 }
 
 .peg.selected {
-  transform: scale(1.2);
-  box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.7), 0 0 20px rgba(76, 175, 80, 0.5);
-  z-index: 30;
+  transform: scale(1.22);
+  box-shadow:
+    0 0 0 4px rgba(141, 206, 255, 0.6),
+    0 0 18px rgba(141, 206, 255, 0.6);
+  z-index: 28;
 }
 
 .space-label {
   position: absolute;
   bottom: -16px;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
+  color: rgba(35, 57, 82, 0.68);
   white-space: nowrap;
   pointer-events: none;
-  opacity: 0.7;
 }
 
 .players-3 .space-label,
@@ -229,9 +218,10 @@
 .section-label {
   position: absolute;
   transform: translate(-50%, -50%);
-  font-size: 1.2rem;
-  font-weight: bold;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: rgba(18, 39, 59, 0.82);
+  text-shadow: 0 2px 4px rgba(255, 255, 255, 0.64);
   pointer-events: none;
   z-index: 5;
 }
@@ -278,47 +268,40 @@
 
 .corner-label {
   position: absolute;
-  font-size: 18px;
-  font-weight: bold;
-  color: #ffffff;
-  background-color: rgba(0, 0, 0, 0.7);
+  transform: translate(-50%, -50%);
   width: 28px;
   height: 28px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  font-size: 17px;
+  font-weight: 700;
+  color: #f9fcff;
+  background: linear-gradient(150deg, rgba(24, 45, 66, 0.84), rgba(16, 31, 47, 0.78));
+  box-shadow: 0 4px 9px rgba(8, 15, 24, 0.35);
   pointer-events: none;
   z-index: 5;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.players-3 .corner-label {
-  font-size: 18px;
-  width: 28px;
-  height: 28px;
 }
 
 .players-4 .corner-label {
-  font-size: 16px;
   width: 26px;
   height: 26px;
+  font-size: 15px;
 }
 
 .players-5 .corner-label {
-  font-size: 14px;
   width: 24px;
   height: 24px;
+  font-size: 14px;
 }
 
 .players-6 .corner-label,
 .players-7 .corner-label,
 .players-8 .corner-label {
-  font-size: 12px;
   width: 22px;
   height: 22px;
+  font-size: 12px;
 }
 
 .starting-circle {
@@ -332,43 +315,19 @@
   z-index: 8;
 }
 
-/* Scale down board for mobile in portrait orientation */
-@media (max-width: 768px) and (orientation: portrait) {
-  .board-container {
-    height: calc(100% - 150px); /* Allow space for controls */
-  }
-}
-
-/* Adjust board for small screens */
-@media (max-width: 480px) {
-  .board-container {
-    width: 100%;
-  }
-}
-
-/* Improved mobile touch targets */
 @media (max-width: 768px) {
   .peg {
     width: 20px;
     height: 20px;
-    /* Slightly larger touch target on mobile */
-    transform: scale(1.1);
+    transform: scale(1.03);
   }
-  
-  .peg.selectable {
-    animation: pulse 1.5s infinite;
-    /* Make selectable pegs even more obvious on mobile */
-    transform: scale(1.15);
-    box-shadow: 0 0 0 4px rgba(255, 215, 0, 0.8), 0 0 20px rgba(255, 215, 0, 0.6);
-  }
-  
+
   .peg.selected {
-    /* Make selected peg more obvious on mobile */
-    transform: scale(1.25);
+    transform: scale(1.2);
   }
-  
-  /* Add active state for touch feedback */
-  .peg:active, .board-space:active {
-    opacity: 0.7;
+
+  .peg:active,
+  .board-space:active {
+    opacity: 0.75;
   }
-} 
+}

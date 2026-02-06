@@ -30,29 +30,32 @@ const OnlineMenu: React.FC<OnlineMenuProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="multiplayer-container">
+    <div className="multiplayer-shell">
       {menuState === OnlineMenuState.MAIN && (
-        <>
+        <div className="multiplayer-container online-main">
           <h2>Play Online</h2>
+          <p className="multiplayer-lead">
+            Host a room for friends, or join with a room code.
+          </p>
           <div className="online-menu">
             <div className="button-group">
-              <button 
+              <button
                 onClick={() => setMenuState(OnlineMenuState.CREATE)}
                 className="skeuomorphic-button primary-button"
               >
                 <span className="button-text">Host a Game</span>
                 <div className="button-shine"></div>
               </button>
-              
-              <button 
+
+              <button
                 onClick={() => setMenuState(OnlineMenuState.JOIN)}
                 className="skeuomorphic-button primary-button"
               >
                 <span className="button-text">Join a Game</span>
                 <div className="button-shine"></div>
               </button>
-              
-              <button 
+
+              <button
                 onClick={onBack}
                 className="skeuomorphic-button secondary-button"
               >
@@ -61,13 +64,13 @@ const OnlineMenu: React.FC<OnlineMenuProps> = ({ onBack }) => {
               </button>
             </div>
           </div>
-        </>
+        </div>
       )}
-      
+
       {menuState === OnlineMenuState.CREATE && (
         <CreateGameRoom onBack={handleBack} />
       )}
-      
+
       {menuState === OnlineMenuState.JOIN && (
         <JoinGameRoom onBack={handleBack} />
       )}

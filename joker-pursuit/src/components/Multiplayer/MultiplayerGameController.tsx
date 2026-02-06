@@ -517,22 +517,25 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     return (
       <div className="color-selection-screen">
         <h2>Choose Your Color</h2>
+        <p className="multiplayer-lead">Each player must pick a unique color before the game starts.</p>
         
         {/* Player color selection status */}
         <div className="player-color-status">
-          <h3>Player Colors:</h3>
+          <h3>Player Colors</h3>
           <ul>
             {players.map((player: MultiplayerPlayer) => (
-              <li key={player.id} className={player.id === playerId ? 'current-player' : ''}>
-                {player.name}
-                {player.id === playerId && ' (You)'}
+              <li key={player.id} className={`player-color-row ${player.id === playerId ? 'current-player' : ''}`}>
+                <span className="player-name">
+                  {player.name}
+                  {player.id === playerId && ' (You)'}
+                </span>
                 {selectedColors[player.id] ? (
-                  <span>
-                    <span 
-                      className="player-color-indicator" 
+                  <span className="player-selection">
+                    <span
+                      className="player-color-indicator"
                       style={{ backgroundColor: selectedColors[player.id] }}
                     ></span>
-                    selected {PLAYER_COLORS.find(c => c.value === selectedColors[player.id])?.name}
+                    {PLAYER_COLORS.find(c => c.value === selectedColors[player.id])?.name}
                   </span>
                 ) : (
                   <span className="waiting-selection">selecting...</span>
@@ -545,7 +548,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
         {/* Color selection */}
         {!hasSelectedColor ? (
           <>
-            <h3>Select your color:</h3>
+            <h3>Select your color</h3>
             <div className="color-options">
               {availableColors.map(color => (
                 <button
@@ -554,7 +557,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
                   style={{ backgroundColor: color.value }}
                   onClick={() => handleColorSelect(color.value)}
                 >
-                  {color.name}
+                  <span className="color-option-label">{color.name}</span>
                 </button>
               ))}
             </div>
@@ -689,7 +692,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
               <span className="room-code">Room: {roomCode}</span>
               {isHost && <span className="host-badge">Host</span>}
             </div>
-            <div className="player-list">
+            <ul className="game-player-list">
               {gameState.players.map((player, index) => (
                 <li key={player.id} className={currentPlayerIndex === index ? 'current-player' : ''}>
                   {player.name} 
@@ -700,7 +703,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
                   {currentPlayerIndex === index && ' (Current Turn)'}
                 </li>
               ))}
-            </div>
+            </ul>
           </div>
           
           {!isCurrentPlayerTurn && (
