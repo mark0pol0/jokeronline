@@ -10,6 +10,35 @@ interface MultiplayerGameControllerProps {
   onBack: () => void;
 }
 
+const normalizeGameStateForClient = (state: GameState): GameState => {
+  if (!state?.board?.allSpaces || state.board.allSpaces instanceof Map) {
+    return state;
+  }
+
+  const allSpacesMap = new Map(Object.entries(state.board.allSpaces as Record<string, any>));
+  return {
+    ...state,
+    board: {
+      ...state.board,
+      allSpaces: allSpacesMap
+    } as GameState['board']
+  };
+};
+
+const serializeGameStateForServer = (state: GameState): GameState => {
+  if (!state?.board?.allSpaces || !(state.board.allSpaces instanceof Map)) {
+    return state;
+  }
+
+  return {
+    ...state,
+    board: {
+      ...state.board,
+      allSpaces: Object.fromEntries(state.board.allSpaces)
+    } as unknown as GameState['board']
+  };
+};
+
 const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ onBack }) => {
   const { 
     isOnlineMode,
@@ -64,25 +93,26 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
 
     // Set up event listeners for socket events
     const onGameStateUpdate = (updatedGameState: GameState) => {
+      const normalizedGameState = normalizeGameStateForClient(updatedGameState);
       console.log("🔄 Received game state update:", {
-        currentPlayer: updatedGameState.players[updatedGameState.currentPlayerIndex]?.name,
-        phase: updatedGameState.phase,
+        currentPlayer: normalizedGameState.players[normalizedGameState.currentPlayerIndex]?.name,
+        phase: normalizedGameState.phase,
         myId: playerId
       });
       
       // Check if game state is valid
-      if (!updatedGameState || !updatedGameState.players) {
+      if (!normalizedGameState || !normalizedGameState.players) {
         console.error("❌ Invalid game state received:", updatedGameState);
         return;
       }
       
       // Simple flag to check if it's this player's turn
-      const isMyTurn = updatedGameState.players[updatedGameState.currentPlayerIndex]?.id === playerId;
+      const isMyTurn = normalizedGameState.players[normalizedGameState.currentPlayerIndex]?.id === playerId;
       console.log(`👤 Turn status: ${isMyTurn ? "It's MY turn" : "It's NOT my turn"}`);
       
       // Set key game state variables
-      setGameState(updatedGameState);
-      setCurrentTurnPlayer(updatedGameState.players[updatedGameState.currentPlayerIndex]?.name || '');
+      setGameState(normalizedGameState);
+      setCurrentTurnPlayer(normalizedGameState.players[normalizedGameState.currentPlayerIndex]?.name || '');
       setIsCurrentPlayerTurn(isMyTurn);
       
       // Force a complete re-render of the GameController by updating the key
@@ -119,7 +149,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
                 // 2. Remove the card from player's hand
                 
                 // After applying the move, update the game state
-                setGameState(updatedGameState);
+                setGameState(normalizeGameStateForClient(updatedGameState));
                 
                 // Force a complete re-render of the GameController component
                 setGameControllerKey(prev => prev + 1);
@@ -134,7 +164,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       console.log('🃏 Received shuffled cards data:', data);
       
       try {
-        const gameState = data.gameState;
+        const gameState = normalizeGameStateForClient(data.gameState);
         
         if (!gameState || !gameState.players) {
           console.error('❌ Invalid game state received from shuffle:', gameState);
@@ -153,24 +183,13 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
           
           // Check for starting space
           let foundStartingSpace = false;
-          if (gameState.board.allSpaces instanceof Map) {
-            for (const [id, space] of gameState.board.allSpaces.entries()) {
-              if (space.type === 'starting' || id.includes('_starting')) {
-                console.log(`🎯 Found starting space ${id} with ${space.pegs?.length || 0} pegs`);
-                foundStartingSpace = true;
-                break;
-              }
+          gameState.board.allSpaces.forEach((space, id) => {
+            if (foundStartingSpace) return;
+            if (space.type === 'starting' || id.includes('_starting')) {
+              console.log(`🎯 Found starting space ${id} with ${space.pegs?.length || 0} pegs`);
+              foundStartingSpace = true;
             }
-          } else {
-            for (const id in gameState.board.allSpaces) {
-              const space = gameState.board.allSpaces[id];
-              if (space.type === 'starting' || id.includes('_starting')) {
-                console.log(`🎯 Found starting space ${id} with ${space.pegs?.length || 0} pegs`);
-                foundStartingSpace = true;
-                break;
-              }
-            }
-          }
+          });
           
           if (!foundStartingSpace) {
             console.warn('⚠️ No starting space found in board!');
@@ -247,7 +266,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const updateGameState = (newGameState: GameState) => {
     if (!isOnlineMode || !roomId) return;
     sendGameStateUpdate(newGameState);
-    setGameState(newGameState);
+    setGameState(normalizeGameStateForClient(newGameState));
   };
 
   // Handle player making a move
@@ -355,7 +374,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       allSpaces: Object.fromEntries(board.allSpaces)
     } as unknown as GameState['board'];
 
-    const initialGameState: GameState = {
+    const initialGameStateForServer: GameState = {
       id: `game-${Date.now()}`,
       players: playerStates,
       currentPlayerIndex: 0,
@@ -367,16 +386,18 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       winner: undefined
     };
 
-    console.log('Initial game state created:', initialGameState);
+    const initialGameStateForClient = normalizeGameStateForClient(initialGameStateForServer);
 
-    setGameState(initialGameState);
+    console.log('Initial game state created:', initialGameStateForServer);
+
+    setGameState(initialGameStateForClient);
     setCurrentTurnPlayer(playerStates[0]?.name || '');
     setIsCurrentPlayerTurn(playerStates[0]?.id === playerId);
     setGamePhase('playing');
 
     socket?.emit('shuffle-cards', {
       roomId,
-      deckState: initialGameState
+      deckState: initialGameStateForServer
     });
   };
 
@@ -580,11 +601,12 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
 
   // Define functions not provided directly by the context
   const sendGameStateUpdate = (gameState: GameState) => {
+    const serializableGameState = serializeGameStateForServer(gameState);
     // Implementation will depend on your socket service
-    console.log('Sending game state update:', gameState);
+    console.log('Sending game state update:', serializableGameState);
     // You would typically emit an event to your socket server here
     if (socket) {
-      socket.emit('update-game-state', { roomId, gameState });
+      socket.emit('update-game-state', { roomId, gameState: serializableGameState });
     }
   };
   
