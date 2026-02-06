@@ -316,6 +316,14 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       playerColorsBySection
     );
 
+    // Mirror local-mode setup: bind each section to the actual online player id.
+    board.sections.forEach((section, index) => {
+      const player = players[index];
+      if (!player) return;
+      section.playerIds = [player.id];
+      section.color = selectedColors[player.id] || player.color || '#CCCCCC';
+    });
+
     const playerStates = players.map((player, index) => {
       const color = selectedColors[player.id] || player.color || '#CCCCCC';
       const hand = deck.splice(0, 5);
