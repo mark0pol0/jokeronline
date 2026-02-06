@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useMultiplayer, MultiplayerPlayer } from '../../context/MultiplayerContext';
 import { GameState } from '../../models/GameState';
 import { createBoard } from '../../models/BoardModel';
-import { Card, Rank, Suit } from '../../models/Card';
+import { Card, Rank, Suit, createDeck, shuffleDeck } from '../../models/Card';
 import GameController from '../Game/GameController';
 import './MultiplayerStyles.css';
 
@@ -224,11 +224,15 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const { 
     isOnlineMode,
     isHost,
-    roomId,
     roomCode,
     playerId,
+    sessionToken,
     players,
+    playersPresence,
+    stateVersion,
     updatePlayerColor,
+    submitAction,
+    requestSync,
     leaveRoom,
     socket
   } = useMultiplayer();
@@ -241,6 +245,12 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const [gameControllerKey, setGameControllerKey] = useState<number>(0);
   const [recentMove, setRecentMove] = useState<RecentMove | null>(null);
   const [recentMoveHighlight, setRecentMoveHighlight] = useState<RecentMoveHighlight | undefined>(undefined);
+  const [appliedSnapshotVersion, setAppliedSnapshotVersion] = useState<number>(0);
+  const [presenceNow, setPresenceNow] = useState<number>(() => Date.now());
+  const latestSnapshotVersionRef = useRef<number>(0);
+  const gameStateRef = useRef<GameState | null>(null);
+  const getCurrentBaseVersion = (): number =>
+    Math.max(latestSnapshotVersionRef.current, stateVersion, appliedSnapshotVersion);
 
   // Keep selected colors in sync with data from the server
   useEffect(() => {
@@ -270,30 +280,50 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     });
   }, [players]);
 
-  // Register socket event listeners properly
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
+  useEffect(() => {
+    if (stateVersion > latestSnapshotVersionRef.current) {
+      latestSnapshotVersionRef.current = stateVersion;
+      setAppliedSnapshotVersion(stateVersion);
+    }
+  }, [stateVersion]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setPresenceNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // Register socket event listeners once and apply snapshots monotonically.
   useEffect(() => {
     if (!isOnlineMode || !socket) return;
 
-    // Set up event listeners for socket events
-    const onGameStateUpdate = (updatedGameState: GameState) => {
-      const normalizedGameState = normalizeGameStateForClient(updatedGameState);
-      console.log("🔄 Received game state update:", {
-        currentPlayer: normalizedGameState.players[normalizedGameState.currentPlayerIndex]?.name,
-        phase: normalizedGameState.phase,
-        myId: playerId
-      });
-      
-      // Check if game state is valid
+    const applyIncomingGameState = (incomingState: GameState, incomingVersion?: number) => {
+      const normalizedGameState = normalizeGameStateForClient(incomingState);
       if (!normalizedGameState || !normalizedGameState.players) {
-        console.error("❌ Invalid game state received:", updatedGameState);
+        console.error('Invalid game state snapshot received:', incomingState);
         return;
       }
-      
-      // Simple flag to check if it's this player's turn
-      const isMyTurn = normalizedGameState.players[normalizedGameState.currentPlayerIndex]?.id === playerId;
-      console.log(`👤 Turn status: ${isMyTurn ? "It's MY turn" : "It's NOT my turn"}`);
 
-      const inferredMove = inferRecentMove(gameState, normalizedGameState);
+      if (
+        typeof incomingVersion === 'number' &&
+        incomingVersion <= latestSnapshotVersionRef.current
+      ) {
+        return;
+      }
+
+      if (typeof incomingVersion === 'number') {
+        latestSnapshotVersionRef.current = incomingVersion;
+        setAppliedSnapshotVersion(incomingVersion);
+      }
+
+      const previousState = gameStateRef.current;
+      const inferredMove = inferRecentMove(previousState, normalizedGameState);
       if (inferredMove) {
         const movePlayer = normalizedGameState.players.find(player => player.id === inferredMove.playerId);
         setRecentMove(inferredMove);
@@ -310,165 +340,113 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       } else {
         setRecentMoveHighlight(undefined);
       }
-      
-      // Set key game state variables
-      setGameState(cloneGameState(normalizedGameState));
+
+      const clonedState = cloneGameState(normalizedGameState);
+      setGameState(clonedState);
+      setGamePhase('playing');
       setCurrentTurnPlayer(normalizedGameState.players[normalizedGameState.currentPlayerIndex]?.name || '');
-      setIsCurrentPlayerTurn(isMyTurn);
-      
-      // Force a complete re-render of the GameController by updating the key
-      // This ensures the controller fully reinitializes with the new state
+      setIsCurrentPlayerTurn(
+        normalizedGameState.players[normalizedGameState.currentPlayerIndex]?.id === playerId
+      );
       setGameControllerKey(prev => prev + 1);
     };
 
-    // Handle moves from other players
-    const onPlayerMove = (data: any) => {
-      console.log('📣 Received player move:', data);
+    const onRoomSnapshot = (snapshot: {
+      roomCode: string;
+      stateVersion: number;
+      gameState: GameState | null;
+      selfPlayerId?: string;
+    }) => {
+      if (!snapshot?.gameState) {
+        return;
+      }
+
+      if (roomCode && snapshot.roomCode?.toUpperCase() !== roomCode.toUpperCase()) {
+        return;
+      }
+
+      applyIncomingGameState(snapshot.gameState, snapshot.stateVersion);
     };
 
-    // Handle shuffled cards
-    const onShuffledCards = (data: any) => {
-      console.log('🃏 Received shuffled cards data:', data);
-      
-      try {
-        const gameState = normalizeGameStateForClient(data.gameState);
-        
-        if (!gameState || !gameState.players) {
-          console.error('❌ Invalid game state received from shuffle:', gameState);
-          return;
-        }
-        
-        console.log(`🎲 Game started with ${gameState.players.length} players`);
-        
-        // Add board validation logging
-        if (gameState.board) {
-          const spacesCount = gameState.board.allSpaces instanceof Map 
-            ? gameState.board.allSpaces.size 
-            : Object.keys(gameState.board.allSpaces || {}).length;
-          
-          console.log(`📋 Board validation: ${spacesCount} spaces, ${gameState.board.sections?.length || 0} sections`);
-          
-          // Check for starting space
-          let foundStartingSpace = false;
-          gameState.board.allSpaces.forEach((space, id) => {
-            if (foundStartingSpace) return;
-            if (space.type === 'starting' || id.includes('_starting')) {
-              console.log(`🎯 Found starting space ${id} with ${space.pegs?.length || 0} pegs`);
-              foundStartingSpace = true;
-            }
-          });
-          
-          if (!foundStartingSpace) {
-            console.warn('⚠️ No starting space found in board!');
-          }
-        } else {
-          console.error('❌ No board found in game state!');
-        }
-        
-        // Check player details
-        gameState.players.forEach((player: any) => {
-          console.log(`🎮 Player ${player.name} has ${player.hand?.length || 0} cards and ${player.pegs?.length || 0} pegs`);
+    const onActionRejected = (payload: {
+      reason?: string;
+      expectedVersion?: number;
+      snapshot?: {
+        stateVersion?: number;
+        gameState?: GameState | null;
+      };
+    }) => {
+      console.warn('Action rejected by server:', payload?.reason || 'unknown_reason');
+
+      if (typeof payload?.expectedVersion === 'number') {
+        latestSnapshotVersionRef.current = Math.max(
+          latestSnapshotVersionRef.current,
+          payload.expectedVersion
+        );
+        setAppliedSnapshotVersion(prev => Math.max(prev, payload.expectedVersion || prev));
+      }
+
+      if (payload?.snapshot?.gameState) {
+        applyIncomingGameState(payload.snapshot.gameState, payload.snapshot.stateVersion);
+      } else {
+        requestSync().catch((error: Error) => {
+          console.error('Failed to request sync after action rejection', error);
         });
-        
-        // Update our local state
-        setGameState(cloneGameState(gameState));
-        setGamePhase('playing');
-        setRecentMove(null);
-        setRecentMoveHighlight(undefined);
-        
-        // Set the current player
-        setCurrentTurnPlayer(gameState.players[gameState.currentPlayerIndex]?.name || '');
-        
-        // Check if it's our turn
-        const isMyTurn = gameState.players[gameState.currentPlayerIndex]?.id === playerId;
-        setIsCurrentPlayerTurn(isMyTurn);
-        
-        console.log(`👤 Initial turn: ${isMyTurn ? "It's MY turn" : "It's NOT my turn"}`);
-        
-        // Force a rerender of the GameController
-        setGameControllerKey(prev => prev + 1);
-      } catch (error) {
-        console.error('❌ Error processing shuffled cards:', error);
       }
     };
 
-    // Handle color update - THIS IS THE KEY FIX
-    const onPlayerColorUpdate = (data: { playerId: string, color: string }) => {
-      console.log('Player color updated received:', data);
-      
-      // Update the selected colors directly
-      setSelectedColors(prev => ({
-        ...prev,
-        [data.playerId]: data.color
-      }));
+    // Legacy fallback listeners remain for rollback mode.
+    const onLegacyGameStateUpdate = (updatedGameState: GameState) => {
+      applyIncomingGameState(updatedGameState);
     };
 
-    // Handle game phase change
-    const onGamePhaseChange = (data: { phase: 'setup' | 'colorSelection' | 'shuffling' | 'playing' }) => {
-      setGamePhase(data.phase);
-    };
+    socket.on('room-snapshot-v2', onRoomSnapshot);
+    socket.on('action-rejected-v2', onActionRejected);
+    socket.on('game-state-updated', onLegacyGameStateUpdate);
 
-    // Set up event listeners
-    socket.on('game-state-updated', onGameStateUpdate);
-    socket.on('player-move', onPlayerMove);
-    socket.on('shuffled-cards', onShuffledCards);
-    socket.on('player-color-updated', onPlayerColorUpdate);
-    socket.on('game-phase-changed', onGamePhaseChange);
-    
-    // For debugging only - uncomment if needed
-    // socket.onAny((event, ...args) => {
-    //   console.log(`🔌 Socket event: ${event}`, args);
-    // });
-    
     return () => {
-      // Clean up event listeners
-      socket.off('game-state-updated', onGameStateUpdate);
-      socket.off('player-move', onPlayerMove);
-      socket.off('shuffled-cards', onShuffledCards);
-      socket.off('player-color-updated', onPlayerColorUpdate);
-      socket.off('game-phase-changed', onGamePhaseChange);
-      // socket.offAny();
+      socket.off('room-snapshot-v2', onRoomSnapshot);
+      socket.off('action-rejected-v2', onActionRejected);
+      socket.off('game-state-updated', onLegacyGameStateUpdate);
     };
-  }, [gameState, isOnlineMode, playerId, socket]);
-
-  // Update game state on the server
-  const updateGameState = (newGameState: GameState) => {
-    if (!isOnlineMode || !roomId) return;
-    sendGameStateUpdate(newGameState);
-    setGameState(cloneGameState(normalizeGameStateForClient(newGameState)));
-  };
+  }, [isOnlineMode, playerId, requestSync, roomCode, socket]);
 
   // Handle player making a move
-  const handleMove = (moveData: any) => {
-    if (!socket || !roomId || !playerId || !isCurrentPlayerTurn) {
+  const handleMove = async (moveData: any) => {
+    if (!roomCode || !sessionToken || !playerId || !isCurrentPlayerTurn) {
       console.error('❌ Cannot make move: not connected or not your turn');
       return;
     }
     
     console.log('🎮 Handling move:', moveData);
-    
-    // Add current player ID to the move data
-    const playerMoveData = {
-      ...moveData,
-      playerId
-    };
-    
-    // Send the move to the server
-    socket.emit('player-move', {
-      roomId,
-      moveData: playerMoveData
-    }, (response: any) => {
-      if (response && response.success) {
-        console.log('✅ Move successfully sent to server');
-      } else {
-        console.error('❌ Error sending move to server:', response?.error);
-      }
-    });
+
+    if (!moveData?.nextGameState) {
+      console.error('❌ Missing nextGameState in multiplayer move payload');
+      return;
+    }
+
+    const nextGameState = serializeGameStateForServer(moveData.nextGameState as GameState);
+    const actionType: 'play_move' | 'discard_hand' | 'skip_second_move' =
+      moveData?.type === 'discard_hand' || moveData?.type === 'skip_second_move'
+        ? moveData.type
+        : 'play_move';
+
+    try {
+      await submitAction(getCurrentBaseVersion(), {
+        type: actionType,
+        nextGameState
+      });
+    } catch (error) {
+      console.error('❌ Error sending move to server:', error);
+      requestSync().catch((syncError: Error) => {
+        console.error('Failed to recover by syncing after move submit failure', syncError);
+      });
+    }
   };
 
   // Handle color selection
   const handleColorSelect = async (color: string) => {
-    if (!isOnlineMode || !roomId) return;
+    if (!isOnlineMode || !roomCode) return;
     
     try {
       // Update color in the server
@@ -485,8 +463,8 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   };
 
   // Prepare and send the initial online game state (host only)
-  const sendInitialGameState = () => {
-    if (!isOnlineMode || !roomId || !isHost || players.length === 0) {
+  const sendInitialGameState = async () => {
+    if (!isOnlineMode || !roomCode || !sessionToken || !isHost || players.length === 0) {
       return;
     }
 
@@ -564,91 +542,64 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     setIsCurrentPlayerTurn(playerStates[0]?.id === playerId);
     setGamePhase('playing');
 
-    socket?.emit('shuffle-cards', {
-      roomId,
-      deckState: initialGameStateForServer
-    });
+    try {
+      await submitAction(getCurrentBaseVersion(), {
+        type: 'phase_transition',
+        phase: 'playing',
+        nextGameState: initialGameStateForServer
+      });
+    } catch (error) {
+      console.error('Failed to submit initial multiplayer game state', error);
+      requestSync().catch((syncError: Error) => {
+        console.error('Failed to request sync after initial game state submit error', syncError);
+      });
+    }
   };
 
   // Function to proceed to the game after color selection
   const handleProceedToGame = () => {
-    if (!isOnlineMode || !roomId || !isHost) return;
+    if (!isOnlineMode || !roomCode || !isHost) return;
 
     setGamePhase('shuffling');
 
-    socket?.emit('change-game-phase', { roomId, phase: 'shuffling' });
-
     // Give clients a brief moment to transition to the shuffling screen
     setTimeout(() => {
-      sendInitialGameState();
+      sendInitialGameState().catch((error: Error) => {
+        console.error('Failed while sending initial game state', error);
+      });
     }, 750);
   };
 
   const generateShuffledDeck = (): Card[] => {
-    // Create a standard deck of 52 cards + 2 jokers
-    const suits: Suit[] = ['hearts', 'diamonds', 'clubs', 'spades'];
-    const ranks: Record<string, Rank> = {
-      'A': 'ace',
-      '2': '2',
-      '3': '3',
-      '4': '4',
-      '5': '5',
-      '6': '6',
-      '7': '7',
-      '8': '8',
-      '9': '9',
-      '10': '10',
-      'J': 'jack',
-      'Q': 'queen',
-      'K': 'king'
-    };
-    
-    // Create all cards
-    const cards: Card[] = [];
-    
-    // Regular cards
-    for (let suitIndex = 0; suitIndex < suits.length; suitIndex++) {
-      const suit = suits[suitIndex];
-      for (let rankIndex = 0; rankIndex < Object.keys(ranks).length; rankIndex++) {
-        const shortRank = Object.keys(ranks)[rankIndex];
-        const rank = ranks[shortRank];
-        const value = rankIndex + 1; // A=1, 2=2, ..., K=13
-        const isFace = rank === 'jack' || rank === 'queen' || rank === 'king';
-        
-        cards.push({
-          id: `${rank}-${suit}-${Date.now()}-${Math.random()}`,
-          suit,
-          rank,
-          value,
-          isFace
-        });
-      }
-    }
-    
-    // Add jokers
-    cards.push({
-      id: `joker-1-${Date.now()}-${Math.random()}`,
-      suit: 'none',
-      rank: 'joker',
-      value: 0,
-      isFace: false
-    });
-    
-    cards.push({
-      id: `joker-2-${Date.now()}-${Math.random()}`,
-      suit: 'none',
-      rank: 'joker',
-      value: 0,
-      isFace: false
-    });
-    
-    // Shuffle the cards
-    return cards.sort(() => Math.random() - 0.5);
+    // Reuse shared card model logic so multiplayer card values match local mode exactly.
+    return shuffleDeck(createDeck());
   };
 
   const handleLeaveGame = () => {
     leaveRoom();
     onBack();
+  };
+
+  const getPresenceLabel = (targetPlayerId: string): string => {
+    const presence = playersPresence[targetPlayerId];
+    if (!presence) {
+      return 'Unknown';
+    }
+
+    if (presence.status === 'connected') {
+      return 'Connected';
+    }
+
+    if (presence.status === 'reconnecting') {
+      if (presence.graceExpiresAt) {
+        const remainingMs = Math.max(0, presence.graceExpiresAt - presenceNow);
+        const remainingSeconds = Math.ceil(remainingMs / 1000);
+        return `Reconnecting (${remainingSeconds}s)`;
+      }
+      return 'Reconnecting';
+    }
+
+    return 'Disconnected';
   };
 
   // Render color selection screen
@@ -771,18 +722,6 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     );
   };
 
-  // Define functions not provided directly by the context
-  const sendGameStateUpdate = (gameState: GameState) => {
-    const serializableGameState = serializeGameStateForServer(gameState);
-    // Implementation will depend on your socket service
-    console.log('Sending game state update:', serializableGameState);
-    // You would typically emit an event to your socket server here
-    if (socket) {
-      socket.emit('update-game-state', { roomId, gameState: serializableGameState });
-    }
-  };
-  
-
   // Debug info
   useEffect(() => {
     if (gameState && gamePhase === 'playing') {
@@ -861,6 +800,18 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
             <div className="room-info">
               <span className="room-code">Room: {roomCode}</span>
               {isHost && <span className="host-badge">Host</span>}
+              <button
+                type="button"
+                className="skeuomorphic-button secondary-button"
+                onClick={() => {
+                  requestSync().catch((error: Error) => {
+                    console.error('Failed to sync during match', error);
+                  });
+                }}
+              >
+                <span className="button-text">Sync</span>
+                <div className="button-shine"></div>
+              </button>
             </div>
             <ul className="game-player-list">
               {gameState.players.map((player, index) => (
@@ -871,6 +822,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
                     style={{backgroundColor: player.color}}
                   ></span>
                   {currentPlayerIndex === index && ' (Current Turn)'}
+                  <span className="helper-text"> {getPresenceLabel(player.id)}</span>
                 </li>
               ))}
             </ul>
@@ -925,12 +877,11 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
             numBoardSections={gameState.players.length}
             playerColors={gameState.players.reduce((colors, p) => ({...colors, [p.id]: p.color}), {})}
             isMultiplayer={true}
-            isCurrentPlayerTurn={isCurrentPlayerTurn}
-            onMove={handleMove}
-            onUpdateGameState={updateGameState}
-            gameStateOverride={cloneGameState(gameState)}
-            localPlayerId={playerId || undefined}
-            recentMoveHighlight={recentMoveHighlight}
+              isCurrentPlayerTurn={isCurrentPlayerTurn}
+              onMove={handleMove}
+              gameStateOverride={cloneGameState(gameState)}
+              localPlayerId={playerId || undefined}
+              recentMoveHighlight={recentMoveHighlight}
           />
           
           <button className="leave-game-button" onClick={handleLeaveGame}>

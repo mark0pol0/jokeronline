@@ -21,10 +21,25 @@ const PLAYER_COLORS = [
 
 type GamePhase = 'home' | 'setup' | 'playing' | 'online' | 'online-playing';
 
+const getInitialLinkRoomCode = (): string | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const code = new URLSearchParams(window.location.search).get('room');
+  if (!code) {
+    return null;
+  }
+
+  const normalized = code.trim().toUpperCase();
+  return normalized || null;
+};
+
 // Main App component
 const App: React.FC = () => {
   // Get multiplayer state
   const { isGameStarted, isOnlineMode } = useMultiplayer();
+  const [linkRoomCode] = useState<string | null>(() => getInitialLinkRoomCode());
   
   // State
   const [gamePhase, setGamePhase] = useState<GamePhase>('home');
@@ -46,6 +61,12 @@ const App: React.FC = () => {
       setGamePhase('online-playing');
     }
   }, [isOnlineMode, isGameStarted, gamePhase]);
+
+  useEffect(() => {
+    if (linkRoomCode && gamePhase === 'home') {
+      setGamePhase('online');
+    }
+  }, [linkRoomCode, gamePhase]);
 
   const addPlayer = () => {
     if (playerNames.length < 8) {
@@ -147,7 +168,7 @@ const App: React.FC = () => {
         />
       )}
       {gamePhase === 'online' && (
-        <OnlineMenu onBack={handleReturnToHome} />
+        <OnlineMenu onBack={handleReturnToHome} initialJoinRoomCode={linkRoomCode} />
       )}
       {gamePhase === 'online-playing' && (
         <MultiplayerGameController onBack={handleReturnToHome} />

@@ -6,6 +6,7 @@ import './MultiplayerStyles.css';
 
 interface OnlineMenuProps {
   onBack: () => void;
+  initialJoinRoomCode?: string | null;
 }
 
 enum OnlineMenuState {
@@ -14,9 +15,17 @@ enum OnlineMenuState {
   JOIN = 'join'
 }
 
-const OnlineMenu: React.FC<OnlineMenuProps> = ({ onBack }) => {
-  const [menuState, setMenuState] = useState<OnlineMenuState>(OnlineMenuState.MAIN);
+const OnlineMenu: React.FC<OnlineMenuProps> = ({ onBack, initialJoinRoomCode }) => {
+  const [menuState, setMenuState] = useState<OnlineMenuState>(
+    initialJoinRoomCode ? OnlineMenuState.JOIN : OnlineMenuState.MAIN
+  );
   const { leaveRoom } = useMultiplayer();
+
+  React.useEffect(() => {
+    if (initialJoinRoomCode) {
+      setMenuState(OnlineMenuState.JOIN);
+    }
+  }, [initialJoinRoomCode]);
 
   const handleBack = () => {
     // If in a submenu, go back to main online menu
@@ -72,7 +81,7 @@ const OnlineMenu: React.FC<OnlineMenuProps> = ({ onBack }) => {
       )}
 
       {menuState === OnlineMenuState.JOIN && (
-        <JoinGameRoom onBack={handleBack} />
+        <JoinGameRoom onBack={handleBack} initialRoomCode={initialJoinRoomCode} />
       )}
     </div>
   );

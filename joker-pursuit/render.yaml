@@ -11,3 +11,13 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: ENABLE_PROTOCOL_V2
+        value: "true"
+      - key: ENABLE_PROTOCOL_V1
+        value: "true"
+      - key: ROOM_TTL_HOURS
+        value: "24"
+      - key: DISCONNECT_GRACE_MINUTES
+        value: "30"
+      - key: REDIS_URL
+        sync: false

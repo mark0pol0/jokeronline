@@ -5,19 +5,27 @@ import './MultiplayerStyles.css';
 
 interface JoinGameRoomProps {
   onBack: () => void;
+  initialRoomCode?: string | null;
 }
 
-const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack }) => {
+const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) => {
   const [playerName, setPlayerName] = useState('');
-  const [roomCode, setRoomCode] = useState('');
+  const [roomCode, setRoomCode] = useState(initialRoomCode?.toUpperCase() || '');
   const [isJoining, setIsJoining] = useState(false);
   const { 
     joinRoom, 
     roomCode: connectedRoomCode, 
     players, 
+    isRejoining,
     error, 
     clearError 
   } = useMultiplayer();
+
+  React.useEffect(() => {
+    if (!connectedRoomCode && initialRoomCode) {
+      setRoomCode(initialRoomCode.toUpperCase());
+    }
+  }, [connectedRoomCode, initialRoomCode]);
 
   const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,6 +50,9 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack }) => {
 
         {!connectedRoomCode ? (
           <form onSubmit={handleJoinRoom} className="multiplayer-form">
+            {isRejoining && (
+              <p className="helper-text">Attempting to reclaim your previous seat...</p>
+            )}
             <div className="form-group">
               <label htmlFor="playerName">Your Name:</label>
               <input

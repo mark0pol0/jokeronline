@@ -576,8 +576,8 @@ const GameController: React.FC<GameControllerProps> = ({
   const updateGameState = (newState: GameState) => {
     setGameState(newState);
     
-    // If in multiplayer mode, send the update to server
-    if (isMultiplayer && onUpdateGameState) {
+    // Keep legacy synchronization path available when onMove is not being used.
+    if (isMultiplayer && onUpdateGameState && !onMove) {
       onUpdateGameState(newState);
     }
   };
@@ -2642,7 +2642,10 @@ const GameController: React.FC<GameControllerProps> = ({
   };
   
   // Handle end turn
-  const handleEndTurn = (currentState: GameState = gameState) => {
+  const handleEndTurn = (
+    currentState: GameState = gameState,
+    actionType: 'play_move' | 'discard_hand' | 'skip_second_move' = 'play_move'
+  ) => {
     // Check if the game is over
     if (isGameOver(currentState)) {
       setPromptMessage("Game Over!");
@@ -2662,7 +2665,16 @@ const GameController: React.FC<GameControllerProps> = ({
       setShowCards(false);
     }
     
-    updateGameState(nextState);
+    if (isMultiplayer && onMove) {
+      // Optimistically update local UI, then hand the canonical commit to the multiplayer layer.
+      setGameState(nextState);
+      onMove({
+        type: actionType,
+        nextGameState: nextState
+      });
+    } else {
+      updateGameState(nextState);
+    }
     setSelectedCardId(null);
     setSelectedPegId(null);
     setSelectableSpaceIds([]);
@@ -2701,7 +2713,7 @@ const GameController: React.FC<GameControllerProps> = ({
     updateGameState(newState);
     
     // Advance to next player
-    handleEndTurn(newState);
+    handleEndTurn(newState, 'discard_hand');
   };
   
   // Function to shuffle the current player's hand (dev mode)
@@ -2787,7 +2799,7 @@ const GameController: React.FC<GameControllerProps> = ({
     
     // End the player's turn
     Log('Ending turn after skipping second move of 9 card split');
-    handleEndTurn(gameState);
+    handleEndTurn(gameState, 'skip_second_move');
   };
 
   // Add handler for revealing hand

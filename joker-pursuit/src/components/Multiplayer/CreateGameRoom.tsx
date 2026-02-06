@@ -10,6 +10,7 @@ interface CreateGameRoomProps {
 const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
   const [playerName, setPlayerName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const { createRoom, roomCode, players, isHost, error, clearError, startGame } = useMultiplayer();
 
   const handleCreateRoom = async (e: React.FormEvent) => {
@@ -31,6 +32,24 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
       await startGame();
     } catch (err) {
       console.error('Failed to start game:', err);
+    }
+  };
+
+  const inviteLink = roomCode
+    ? `${window.location.origin}/?room=${encodeURIComponent(roomCode)}`
+    : '';
+
+  const handleCopyInviteLink = async () => {
+    if (!inviteLink) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setCopyStatus('copied');
+    } catch (copyError) {
+      console.error('Failed to copy invite link', copyError);
+      setCopyStatus('failed');
     }
   };
 
@@ -91,6 +110,20 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
               <h3>Room Code</h3>
               <div className="code-box">{roomCode}</div>
               <p>Share this code with your friends to join your game.</p>
+              <button
+                type="button"
+                onClick={handleCopyInviteLink}
+                className="skeuomorphic-button secondary-button"
+              >
+                <span className="button-text">Copy Invite Link</span>
+                <div className="button-shine"></div>
+              </button>
+              {copyStatus === 'copied' && (
+                <p className="helper-text">Invite link copied to clipboard.</p>
+              )}
+              {copyStatus === 'failed' && (
+                <p className="helper-text">Could not copy automatically. Please copy the URL manually.</p>
+              )}
             </div>
 
             <div className="waiting-player-list">

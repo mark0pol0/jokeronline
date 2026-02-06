@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSocket } from '../../context/SocketContext';
+import { useMultiplayer } from '../../context/MultiplayerContext';
 import './MultiplayerStyles.css';
 
 const ConnectionStatus: React.FC = () => {
@@ -10,6 +11,7 @@ const ConnectionStatus: React.FC = () => {
     updateServerUrl,
     reconnect
   } = useSocket();
+  const { isOnlineMode, roomCode, requestSync } = useMultiplayer();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [draftUrl, setDraftUrl] = useState(serverUrl);
   const [hasSaved, setHasSaved] = useState(false);
@@ -56,6 +58,19 @@ const ConnectionStatus: React.FC = () => {
             onClick={reconnect}
           >
             Retry
+          </button>
+        )}
+        {isConnected && isOnlineMode && roomCode && (
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              requestSync().catch((error: Error) => {
+                console.error('Failed to sync room snapshot', error);
+              });
+            }}
+          >
+            Sync now
           </button>
         )}
       </div>
