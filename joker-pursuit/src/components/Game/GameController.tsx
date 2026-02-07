@@ -103,16 +103,151 @@ const expandSingleDestinationMoves = (moves: Move[]): Move[] => {
   return expanded;
 };
 
+const getOrderedTrackSpaces = (gameState: GameState): BoardSpace[] =>
+  Array.from(gameState.board.allSpaces.values())
+    .filter(space => space.type === 'normal' || space.type === 'entrance' || space.type === 'corner')
+    .sort((left, right) => {
+      const leftSection = left.sectionIndex ?? 0;
+      const rightSection = right.sectionIndex ?? 0;
+      if (leftSection !== rightSection) {
+        return leftSection - rightSection;
+      }
+      return left.index - right.index;
+    });
+
+const resolveNineCastleEntryMove = (gameState: GameState, move: Move): Move | null => {
+  const nineMetadata = move.metadata?.nineCardMove;
+  if (!nineMetadata || nineMetadata.direction !== 'forward') {
+    return null;
+  }
+
+  if (!move.metadata?.willPassCastleEntrance && !move.metadata?.castleEntry) {
+    return null;
+  }
+
+  const playerSection = gameState.board.sections.find(section =>
+    section.playerIds?.includes(move.playerId)
+  );
+  if (!playerSection) {
+    return null;
+  }
+
+  const pegSpace = findSpaceForPeg(gameState, move.pegId);
+  if (!pegSpace || pegSpace.type === 'home' || pegSpace.type === 'castle') {
+    return null;
+  }
+
+  const orderedSpaces = getOrderedTrackSpaces(gameState);
+  const currentSpaceIndex = orderedSpaces.findIndex(space => space.id === pegSpace.id);
+  const castleEntranceIndex = orderedSpaces.findIndex(
+    space =>
+      space.sectionIndex === playerSection.index &&
+      space.type === 'entrance' &&
+      space.index === 3
+  );
+  if (currentSpaceIndex === -1 || castleEntranceIndex === -1) {
+    return null;
+  }
+
+  const stepsToEntrance =
+    castleEntranceIndex >= currentSpaceIndex
+      ? castleEntranceIndex - currentSpaceIndex
+      : (orderedSpaces.length - currentSpaceIndex) + castleEntranceIndex;
+  const castleSteps = nineMetadata.steps - stepsToEntrance - 1;
+  if (castleSteps < 0 || castleSteps > 4) {
+    return null;
+  }
+
+  const castleDestination = Array.from(gameState.board.allSpaces.values()).find(
+    space =>
+      space.sectionIndex === playerSection.index &&
+      space.type === 'castle' &&
+      space.index === castleSteps
+  );
+  if (!castleDestination) {
+    return null;
+  }
+
+  const hasOwnPegInCastleDestination = castleDestination.pegs.some(existingPegId => {
+    const [existingPlayerId] = existingPegId.split('-peg-');
+    return existingPlayerId === move.playerId;
+  });
+  if (hasOwnPegInCastleDestination) {
+    return null;
+  }
+
+  return {
+    ...move,
+    destinations: [castleDestination.id],
+    metadata: {
+      ...move.metadata,
+      castleEntry: true,
+      castleMovement: true
+    }
+  };
+};
+
+const moveChangesPegPosition = (gameState: GameState, move: Move): boolean => {
+  if (!move.destinations || move.destinations.length === 0) {
+    return false;
+  }
+
+  const candidateMove: Move = {
+    ...move,
+    destinations: [move.destinations[0]]
+  };
+
+  const baselineState = normalizeGameState(cloneGameState(gameState));
+  const beforeSpace = findSpaceForPeg(baselineState, candidateMove.pegId);
+  const { newState } = applyMove(baselineState, candidateMove);
+  const afterSpace = findSpaceForPeg(newState, candidateMove.pegId);
+
+  return Boolean(
+    beforeSpace &&
+      afterSpace &&
+      beforeSpace.id !== afterSpace.id &&
+      afterSpace.id === candidateMove.destinations[0]
+  );
+};
+
+const isExecutableMove = (gameState: GameState, move: Move): boolean => {
+  if (moveChangesPegPosition(gameState, move)) {
+    return true;
+  }
+
+  const resolvedNineCastleEntryMove = resolveNineCastleEntryMove(gameState, move);
+  if (!resolvedNineCastleEntryMove) {
+    return false;
+  }
+
+  return moveChangesPegPosition(gameState, resolvedNineCastleEntryMove);
+};
+
+const getExecutableMoves = (
+  gameState: GameState,
+  playerId: string,
+  cardId: string,
+  options?: {
+    direction?: 'forward' | 'backward';
+    steps?: number;
+    isSecondMove?: boolean;
+    firstMovePegId?: string;
+  }
+): Move[] =>
+  expandSingleDestinationMoves(getPossibleMoves(gameState, playerId, cardId, options)).filter(move =>
+    isExecutableMove(gameState, move)
+  );
+
 const hasLegalMoveForCard = (gameState: GameState, player: Player, card: Card): boolean => {
   if (card.rank === '7') {
-    if (getPossibleMoves(gameState, player.id, card.id).length > 0) {
+    if (getExecutableMoves(gameState, player.id, card.id).length > 0) {
       return true;
     }
 
     for (let firstSteps = 1; firstSteps <= 6; firstSteps += 1) {
-      const firstMoves = expandSingleDestinationMoves(
-        getPossibleMoves(gameState, player.id, card.id, { steps: firstSteps })
-      ).map(move => ({
+      const firstMoves = getExecutableMoves(gameState, player.id, card.id, {
+        steps: firstSteps
+      }).map(move => ({
         ...move,
         metadata: {
           ...move.metadata,
@@ -128,7 +263,7 @@ const hasLegalMoveForCard = (gameState: GameState, player: Player, card: Card): 
           cloneGameState(applyMove(cloneGameState(gameState), firstMove).newState)
         );
         const secondSteps = 7 - firstSteps;
-        const secondMoves = getPossibleMoves(firstMoveState, player.id, card.id, {
+        const secondMoves = getExecutableMoves(firstMoveState, player.id, card.id, {
           steps: secondSteps,
           isSecondMove: true,
           firstMovePegId: firstMove.pegId
@@ -144,18 +279,13 @@ const hasLegalMoveForCard = (gameState: GameState, player: Player, card: Card): 
   }
 
   if (card.rank === '9') {
-    if (
-      getPossibleMoves(gameState, player.id, card.id, {
-        direction: 'forward',
-        steps: 9
-      }).length > 0
-    ) {
+    if (getExecutableMoves(gameState, player.id, card.id, { direction: 'forward', steps: 9 }).length > 0) {
       return true;
     }
 
     for (const direction of ['forward', 'backward'] as const) {
       for (let firstSteps = 1; firstSteps <= 8; firstSteps += 1) {
-        const splitFirstMoves = getPossibleMoves(gameState, player.id, card.id, {
+        const splitFirstMoves = getExecutableMoves(gameState, player.id, card.id, {
           direction,
           steps: firstSteps
         });
@@ -171,7 +301,7 @@ const hasLegalMoveForCard = (gameState: GameState, player: Player, card: Card): 
     return false;
   }
 
-  return getPossibleMoves(gameState, player.id, card.id).length > 0;
+  return getExecutableMoves(gameState, player.id, card.id).length > 0;
 };
 
 // Determine if a player can use the discard hand button.
