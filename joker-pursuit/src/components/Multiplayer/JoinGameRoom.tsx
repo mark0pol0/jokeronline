@@ -58,6 +58,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
               <input
                 type="text"
                 id="playerName"
+                data-testid="join-room-player-name"
                 value={playerName}
                 onChange={(e) => setPlayerName(e.target.value)}
                 placeholder="Enter your name"
@@ -71,6 +72,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
               <input
                 type="text"
                 id="roomCode"
+                data-testid="join-room-code-input"
                 value={roomCode}
                 onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
                 placeholder="Enter room code"
@@ -91,6 +93,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
                 type="button"
                 onClick={onBack}
                 className="skeuomorphic-button secondary-button"
+                data-testid="join-room-back"
               >
                 <span className="button-text">Back</span>
                 <div className="button-shine"></div>
@@ -100,6 +103,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
                 type="submit"
                 className="skeuomorphic-button primary-button"
                 disabled={isJoining || !playerName.trim() || !roomCode.trim()}
+                data-testid="join-room-submit"
               >
                 <span className="button-text">
                   {isJoining ? 'Joining...' : 'Join Room'}
@@ -112,7 +116,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
           <div className="waiting-room">
             <div className="room-code-display">
               <h3>Room Code</h3>
-              <div className="code-box">{connectedRoomCode}</div>
+              <div className="code-box" data-testid="join-room-code">{connectedRoomCode}</div>
             </div>
 
             <div className="waiting-player-list">
@@ -138,6 +142,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
               <button
                 onClick={onBack}
                 className="skeuomorphic-button secondary-button"
+                data-testid="join-room-leave"
               >
                 <span className="button-text">Leave Room</span>
                 <div className="button-shine"></div>

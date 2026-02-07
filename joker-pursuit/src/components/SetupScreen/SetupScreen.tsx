@@ -194,7 +194,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
         </div>
         
         <div className="setup-actions">
-          <button className="skeuomorphic-button secondary-button" onClick={onBack}>
+          <button className="skeuomorphic-button secondary-button" data-testid="setup-back" onClick={onBack}>
             <span className="button-text">Back</span>
             <div className="button-shine"></div>
           </button>
@@ -212,6 +212,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
             className="skeuomorphic-button primary-button" 
             onClick={onStartGame}
             disabled={playerNames.length < 2}
+            data-testid="setup-start-game"
           >
             <span className="button-text">Start Game</span>
             <div className="button-shine"></div>

@@ -53,6 +53,44 @@ npm run dev
 
 3. Open your browser and navigate to `http://localhost:3000`
 
+#### Regression Harness (CLI + Playwright)
+
+This repo now includes a deterministic harness for deep card-rule testing, especially `7` and `9` split behavior.
+
+- Run full harness (offline + online):
+```
+npm run harness
+```
+
+- Run only offline scenarios:
+```
+npm run harness:offline
+```
+
+- Run only online scenarios:
+```
+npm run harness:online
+```
+
+- Run full lifecycle autoplay to `gameOver` (offline):
+```
+npm run harness:full:offline
+```
+
+- Run full lifecycle autoplay to `gameOver` (online host/joiner tabs):
+```
+npm run harness:full:online
+```
+
+- Run your own scenario file:
+```
+node scripts/jp-harness.mjs all --scenario-file scripts/scenarios/custom-template.json
+```
+
+Reports are written to:
+- `reports/harness/jp-harness-<timestamp>.json`
+- `reports/harness/jp-harness-<timestamp>.md`
+
 #### Production Build
 
 1. Build the client:

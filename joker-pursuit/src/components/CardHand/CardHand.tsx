@@ -94,6 +94,10 @@ const CardHand: React.FC<CardHandProps> = ({
         <div 
           key={card.id}
           className={`playing-card ${selectedCardId === card.id ? 'selected' : ''} ${!showCards ? 'hidden-card' : ''}`}
+          data-testid={`card-${card.id}`}
+          data-card-id={card.id}
+          data-card-rank={card.rank}
+          data-card-suit={card.suit}
           onClick={() => showCards && onCardSelect(card.id)}
           style={{ 
             cursor: showCards ? 'pointer' : 'default',

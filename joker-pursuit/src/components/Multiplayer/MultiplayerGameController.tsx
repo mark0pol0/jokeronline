@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useMultiplayer, MultiplayerPlayer } from '../../context/MultiplayerContext';
 import { GameState } from '../../models/GameState';
 import { createBoard } from '../../models/BoardModel';
@@ -249,8 +249,9 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const [presenceNow, setPresenceNow] = useState<number>(() => Date.now());
   const latestSnapshotVersionRef = useRef<number>(0);
   const gameStateRef = useRef<GameState | null>(null);
-  const getCurrentBaseVersion = (): number =>
-    Math.max(latestSnapshotVersionRef.current, stateVersion, appliedSnapshotVersion);
+  const getCurrentBaseVersion = useCallback((): number => {
+    return Math.max(latestSnapshotVersionRef.current, stateVersion, appliedSnapshotVersion);
+  }, [stateVersion, appliedSnapshotVersion]);
 
   // Keep selected colors in sync with data from the server
   useEffect(() => {
@@ -443,6 +444,42 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       });
     }
   };
+
+  const handleHarnessSyncToServer = useCallback(async () => {
+    try {
+      await requestSync();
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Failed to sync from server.'
+      };
+    }
+  }, [requestSync]);
+
+  const handleHarnessCommitStateToServer = useCallback(async (nextState: GameState) => {
+    if (!roomCode || !sessionToken || !isHost) {
+      return {
+        ok: false,
+        error: 'Only the online host can commit harness state to the server.'
+      };
+    }
+
+    try {
+      const serializedState = serializeGameStateForServer(nextState);
+      await submitAction(getCurrentBaseVersion(), {
+        type: 'phase_transition',
+        phase: 'playing',
+        nextGameState: serializedState
+      });
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Failed to commit harness state.'
+      };
+    }
+  }, [getCurrentBaseVersion, isHost, roomCode, sessionToken, submitAction]);
 
   // Handle color selection
   const handleColorSelect = async (color: string) => {
@@ -675,6 +712,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
                   key={color.name}
                   className={`color-option ${playerId && selectedColors[playerId] === color.value ? 'selected' : ''}`}
                   style={{ backgroundColor: color.value }}
+                  data-testid={`multiplayer-color-${color.name.toLowerCase()}`}
                   onClick={() => handleColorSelect(color.value)}
                 >
                   <span className="color-option-label">{color.name}</span>
@@ -704,6 +742,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
               className="skeuomorphic-button primary-button"
               onClick={handleProceedToGame}
               disabled={!allPlayersHaveColors}
+              data-testid="multiplayer-start-game"
             >
               <span className="button-text">Start the Game</span>
               <div className="button-shine"></div>
@@ -882,6 +921,8 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
               gameStateOverride={cloneGameState(gameState)}
               localPlayerId={playerId || undefined}
               recentMoveHighlight={recentMoveHighlight}
+              onHarnessSyncToServer={handleHarnessSyncToServer}
+              onHarnessCommitStateToServer={handleHarnessCommitStateToServer}
           />
           
           <button className="leave-game-button" onClick={handleLeaveGame}>

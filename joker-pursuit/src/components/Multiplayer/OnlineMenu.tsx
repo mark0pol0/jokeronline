@@ -51,6 +51,7 @@ const OnlineMenu: React.FC<OnlineMenuProps> = ({ onBack, initialJoinRoomCode }) 
               <button
                 onClick={() => setMenuState(OnlineMenuState.CREATE)}
                 className="skeuomorphic-button primary-button"
+                data-testid="online-host-game"
               >
                 <span className="button-text">Host a Game</span>
                 <div className="button-shine"></div>
@@ -59,6 +60,7 @@ const OnlineMenu: React.FC<OnlineMenuProps> = ({ onBack, initialJoinRoomCode }) 
               <button
                 onClick={() => setMenuState(OnlineMenuState.JOIN)}
                 className="skeuomorphic-button primary-button"
+                data-testid="online-join-game"
               >
                 <span className="button-text">Join a Game</span>
                 <div className="button-shine"></div>

@@ -1,0 +1,48 @@
+{
+  "scenarios": [
+    {
+      "id": "custom-offline-seven",
+      "mode": "offline",
+      "name": "Custom 7 split sandbox",
+      "setup": {
+        "currentPlayer": "player-1",
+        "resetToHome": true,
+        "hands": {
+          "player-1": ["7h", "2h", "3h", "4h", "5h"],
+          "player-2": ["2c", "3c", "4c", "5c", "6c"]
+        },
+        "placements": {
+          "player-1:1": "section1_1",
+          "player-1:2": "section1_10"
+        }
+      },
+      "steps": [
+        { "action": "clickCard", "rank": "7" },
+        { "action": "clickTestId", "id": "seven-option-split" },
+        { "action": "clickTestId", "id": "seven-step-3" },
+        { "action": "clickPeg", "peg": "player-1:1" },
+        { "action": "clickPeg", "peg": "player-1:2" }
+      ],
+      "expect": [
+        { "type": "pegAt", "peg": "player-1:1", "space": "section1_4" },
+        { "type": "pegAt", "peg": "player-1:2", "space": "section1_14" }
+      ]
+    },
+    {
+      "id": "custom-offline-autoplay-full",
+      "mode": "offline",
+      "name": "Custom full-game autoplay",
+      "setup": {
+        "currentPlayer": "player-1",
+        "resetToHome": true
+      },
+      "steps": [
+        { "action": "autoPlayUntilGameOver", "maxTurns": 900 }
+      ],
+      "expect": [
+        { "type": "phaseIs", "phase": "gameOver" },
+        { "type": "winnerExists" }
+      ]
+    }
+  ]
+}

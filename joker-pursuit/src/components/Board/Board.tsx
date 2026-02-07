@@ -574,6 +574,9 @@ const Board: React.FC<BoardProps> = ({
       <div 
         key={pegId}
         className={`peg ${isSelected ? 'selected' : ''} ${isSelectable ? 'selectable' : ''} ${isPegInSelectableSpace ? 'in-selectable-space' : ''}`}
+        data-testid={`peg-${pegId}`}
+        data-peg-id={pegId}
+        data-space-id={space.id}
         style={{
           backgroundColor: pegColor,
           transform: `translate(${offsetX}px, ${offsetY}px)`,
@@ -706,6 +709,8 @@ const Board: React.FC<BoardProps> = ({
         <div 
           key={space.id}
           className={classes}
+          data-testid={`space-${space.id}`}
+          data-space-id={space.id}
           style={style}
           onClick={() => onSpaceClick(space.id)}
           onTouchEnd={(e) => {

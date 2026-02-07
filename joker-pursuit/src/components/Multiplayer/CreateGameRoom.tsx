@@ -67,6 +67,7 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
               <input
                 type="text"
                 id="playerName"
+                data-testid="create-room-player-name"
                 value={playerName}
                 onChange={(e) => setPlayerName(e.target.value)}
                 placeholder="Enter your name"
@@ -87,6 +88,7 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
                 type="button"
                 onClick={onBack}
                 className="skeuomorphic-button secondary-button"
+                data-testid="create-room-back"
               >
                 <span className="button-text">Back</span>
                 <div className="button-shine"></div>
@@ -96,6 +98,7 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
                 type="submit"
                 className="skeuomorphic-button primary-button"
                 disabled={isCreating || !playerName.trim()}
+                data-testid="create-room-submit"
               >
                 <span className="button-text">
                   {isCreating ? 'Creating...' : 'Create Room'}
@@ -108,12 +111,13 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
           <div className="waiting-room">
             <div className="room-code-display">
               <h3>Room Code</h3>
-              <div className="code-box">{roomCode}</div>
+              <div className="code-box" data-testid="create-room-code">{roomCode}</div>
               <p>Share this code with your friends to join your game.</p>
               <button
                 type="button"
                 onClick={handleCopyInviteLink}
                 className="skeuomorphic-button secondary-button"
+                data-testid="create-room-copy-link"
               >
                 <span className="button-text">Copy Invite Link</span>
                 <div className="button-shine"></div>
@@ -149,6 +153,7 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
               <button
                 onClick={onBack}
                 className="skeuomorphic-button secondary-button"
+                data-testid="create-room-leave"
               >
                 <span className="button-text">Leave Room</span>
                 <div className="button-shine"></div>
@@ -159,6 +164,7 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
                   onClick={handleStartGame}
                   className="skeuomorphic-button primary-button"
                   disabled={players.length < 2}
+                  data-testid="create-room-start-game"
                 >
                   <span className="button-text">Start Game</span>
                   <div className="button-shine"></div>

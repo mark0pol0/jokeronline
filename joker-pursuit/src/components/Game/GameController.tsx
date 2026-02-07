@@ -1,8 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GameState, createInitialGameState, advanceToNextPlayer, isGameOver, shuffleAndDealCards, Move } from '../../models/GameState';
 import { getPossibleMoves, applyMove, findSpaceForPeg } from '../../utils/MovementUtils';
 import { BoardSpace } from '../../models/BoardModel';
 import { Card } from '../../models/Card';
+import {
+  cloneGameState,
+  HarnessActionResult,
+  HarnessCardInput,
+  HarnessMoveOptions,
+  JokerPursuitHarnessApi,
+  normalizeGameState,
+  placePegOnBoard,
+  serializeGameState,
+  setCurrentPlayerById,
+  setPegPositionsOnBoard,
+  setPlayerHandById
+} from '../../devtools/gameHarness';
 import Board from '../Board/Board';
 import CardHand from '../CardHand/CardHand';
 import './GameController.css';
@@ -27,6 +40,8 @@ interface GameControllerProps {
     toSpaceId?: string;
     playerColor?: string;
   };
+  onHarnessSyncToServer?: () => Promise<HarnessActionResult>;
+  onHarnessCommitStateToServer?: (nextState: GameState) => Promise<HarnessActionResult>;
 }
 
 // Add new interface for nine card state
@@ -69,63 +84,105 @@ interface FloatingElement {
   scale: number;
 }
 
-// Determine if a player can use the discard hand button based on new rules
-const canUseDiscardButton = (gameState: GameState, player: Player): boolean => {
-  // Check if player has face cards, ace cards, or jokers
-  const hasFaceOrAceCard = player.hand.some((card: Card) => card.isFace || card.rank === 'ace');
-  
-  // Check if player has a joker
-  const hasJoker = player.hand.some((card: Card) => card.rank === 'joker');
-  
-  // Check where all the player's pegs are located
-  const pegPositions = player.pegs.map((pegId: string) => {
-    const pegSpace = findSpaceForPeg(gameState, pegId);
-    return pegSpace ? pegSpace.type : 'unknown';
-  });
-  
-  // If any peg is moving around on the board (not in home or castle), player should not be able to discard
-  const hasPegOnBoard = pegPositions.some((type: string) => type !== 'home' && type !== 'castle' && type !== 'unknown');
-  if (hasPegOnBoard) {
-    return false;
-  }
-  
-  // If player has face card or ace, they don't need to discard
-  if (hasFaceOrAceCard) {
-    return false;
-  }
-  
-  // If player has a joker, check if it's usable (there's an opponent's peg that can be hit)
-  if (hasJoker) {
-    // Check if there are any opponent pegs on the board that could be hit with a joker
-    let canUseJoker = false;
-    
-    // Look through all spaces for opponent pegs that can be hit
-    gameState.board.allSpaces.forEach((space) => {
-      // Only check normal and entrance spaces (places where jokers can hit)
-      if (space.type !== 'normal' && space.type !== 'entrance') {
-        return;
-      }
-      
-      // Check for opponent pegs in this space
-      space.pegs.forEach(pegId => {
-        const [pegPlayerId] = pegId.split('-peg-');
-        // If this is an opponent's peg, the joker is usable
-        if (pegPlayerId !== player.id) {
-          canUseJoker = true;
-        }
+const expandSingleDestinationMoves = (moves: Move[]): Move[] => {
+  const expanded: Move[] = [];
+
+  moves.forEach(move => {
+    if (!move.destinations || move.destinations.length === 0) {
+      return;
+    }
+
+    move.destinations.forEach(destination => {
+      expanded.push({
+        ...move,
+        destinations: [destination]
       });
     });
-    
-    // If joker is usable, player doesn't need to discard
-    if (canUseJoker) {
-      return false;
+  });
+
+  return expanded;
+};
+
+const hasLegalMoveForCard = (gameState: GameState, player: Player, card: Card): boolean => {
+  if (card.rank === '7') {
+    if (getPossibleMoves(gameState, player.id, card.id).length > 0) {
+      return true;
     }
+
+    for (let firstSteps = 1; firstSteps <= 6; firstSteps += 1) {
+      const firstMoves = expandSingleDestinationMoves(
+        getPossibleMoves(gameState, player.id, card.id, { steps: firstSteps })
+      ).map(move => ({
+        ...move,
+        metadata: {
+          ...move.metadata,
+          sevenCardMove: {
+            steps: firstSteps,
+            isFirstMove: true
+          }
+        }
+      }));
+
+      for (const firstMove of firstMoves) {
+        const firstMoveState = normalizeGameState(
+          cloneGameState(applyMove(cloneGameState(gameState), firstMove).newState)
+        );
+        const secondSteps = 7 - firstSteps;
+        const secondMoves = getPossibleMoves(firstMoveState, player.id, card.id, {
+          steps: secondSteps,
+          isSecondMove: true,
+          firstMovePegId: firstMove.pegId
+        });
+
+        if (secondMoves.length > 0) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
-  
-  // All pegs are in home, or in a combination of home and castle
-  // Player has no face cards, aces, or usable jokers
-  // Therefore, player should be able to discard hand
-  return true;
+
+  if (card.rank === '9') {
+    if (
+      getPossibleMoves(gameState, player.id, card.id, {
+        direction: 'forward',
+        steps: 9
+      }).length > 0
+    ) {
+      return true;
+    }
+
+    for (const direction of ['forward', 'backward'] as const) {
+      for (let firstSteps = 1; firstSteps <= 8; firstSteps += 1) {
+        const splitFirstMoves = getPossibleMoves(gameState, player.id, card.id, {
+          direction,
+          steps: firstSteps
+        });
+
+        if (splitFirstMoves.length > 0) {
+          // A legal first split move means the card is playable.
+          // If second split moves are unavailable, UI supports skip-second-move.
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  return getPossibleMoves(gameState, player.id, card.id).length > 0;
+};
+
+// Determine if a player can use the discard hand button.
+// Rule: if a player has no legal moves, they can discard and redraw.
+const canUseDiscardButton = (gameState: GameState, player: Player): boolean => {
+  if (!gameState || gameState.phase !== 'playing') {
+    return false;
+  }
+
+  const hasAnyLegalMove = player.hand.some(card => hasLegalMoveForCard(gameState, player, card));
+  return !hasAnyLegalMove;
 };
 
 const Log = (message: string, ...args: any[]) => {
@@ -145,7 +202,9 @@ const GameController: React.FC<GameControllerProps> = ({
   onUpdateGameState,
   gameStateOverride,
   localPlayerId,
-  recentMoveHighlight
+  recentMoveHighlight,
+  onHarnessSyncToServer,
+  onHarnessCommitStateToServer
 }) => {
   // Initialize game state
   const [gameState, setGameState] = useState<GameState>(() => {
@@ -221,6 +280,8 @@ const GameController: React.FC<GameControllerProps> = ({
   const initialDistanceRef = useRef(0);
   const initialScaleRef = useRef(0);
   const currentZoomRef = useRef(1.2); // Keep track of current zoom during pinch
+  const handlePegSelectRef = useRef<(pegId: string) => void>(() => {});
+  const handleSpaceSelectRef = useRef<(spaceId: string) => void>(() => {});
   
   // Create a ref to hold the last update time for debouncing
   const lastUpdateTimeRef = useRef(0);
@@ -573,14 +634,681 @@ const GameController: React.FC<GameControllerProps> = ({
   };
   
   // Add a function to update game state and notify other players in multiplayer mode
-  const updateGameState = (newState: GameState) => {
+  const updateGameState = useCallback((newState: GameState) => {
     setGameState(newState);
     
     // Keep legacy synchronization path available when onMove is not being used.
     if (isMultiplayer && onUpdateGameState && !onMove) {
       onUpdateGameState(newState);
     }
+  }, [isMultiplayer, onMove, onUpdateGameState]);
+
+  const clearInteractionState = useCallback(() => {
+    setSelectedCardId(null);
+    setSelectedPegId(null);
+    setSelectableSpaceIds([]);
+    setSelectablePegIds([]);
+    setPromptMessage('');
+    setCastlePromptState({ isActive: false, pegId: '' });
+    setNineCardState({ state: 'INITIAL', firstMoveComplete: false });
+    setSevenCardState({ state: 'INITIAL', isSplit: false });
+  }, []);
+
+  const runHarnessAutoPlaySingleTurn = (): HarnessActionResult<{
+    action: 'play_move' | 'discard_hand' | 'game_over';
+    playerId: string;
+    cardId?: string;
+    pegId?: string;
+    destination?: string;
+  }> => {
+    interface AutoPlayCandidate {
+      priority: number;
+      sequence: number;
+      card: Card;
+      firstMove: Move;
+      secondMove?: Move;
+      endTurnAction: 'play_move' | 'skip_second_move';
+    }
+
+    const expandMoves = (moves: Move[]): Move[] => {
+      const expanded: Move[] = [];
+      moves.forEach(move => {
+        if (!move.destinations || move.destinations.length === 0) {
+          return;
+        }
+
+        move.destinations.forEach(destination => {
+          expanded.push({
+            ...move,
+            destinations: [destination]
+          });
+        });
+      });
+
+      return expanded;
+    };
+
+    const cardPriority = (card: Card): number => {
+      if (card.rank === '9') {
+        return 40;
+      }
+
+      if (card.rank === '7') {
+        return 35;
+      }
+
+      if (card.rank === 'joker') {
+        return 30;
+      }
+
+      if (card.rank === 'ace') {
+        return 28;
+      }
+
+      if (card.isFace) {
+        return 24;
+      }
+
+      if (card.rank === '8') {
+        return 18;
+      }
+
+      return 16;
+    };
+
+    const scoreMove = (state: GameState, player: Player, move: Move): number => {
+      const destinationId = move.destinations[0];
+      const destinationSpace = state.board.allSpaces.get(destinationId);
+      const fromSpace = findSpaceForPeg(state, move.pegId);
+      const playerSectionIndex = state.board.sections.find(section =>
+        section.playerIds?.includes(player.id)
+      )?.index;
+
+      if (!destinationSpace) {
+        return -1_000;
+      }
+
+      const homePegCount = player.pegs.reduce((count, pegId) => {
+        const pegSpace = findSpaceForPeg(state, pegId);
+        return pegSpace?.type === 'home' ? count + 1 : count;
+      }, 0);
+
+      let score = 0;
+
+      if (destinationSpace.type === 'castle') {
+        score += 1_000 + (destinationSpace.index * 140);
+        if (fromSpace?.type === 'castle') {
+          score += 240;
+        }
+      }
+
+      if (
+        fromSpace?.type === 'home' &&
+        (destinationSpace.type === 'normal' || destinationSpace.type === 'entrance' || destinationSpace.type === 'corner')
+      ) {
+        score += 620;
+      }
+
+      if (homePegCount > 0 && fromSpace?.type !== 'home') {
+        score -= 140;
+      }
+
+      if (destinationSpace.type === 'entrance' && destinationSpace.sectionIndex === playerSectionIndex && destinationSpace.index === 3) {
+        score += 200;
+      }
+
+      if (destinationSpace.type === 'normal' || destinationSpace.type === 'entrance' || destinationSpace.type === 'corner') {
+        score += 45;
+        if (destinationSpace.sectionIndex === playerSectionIndex) {
+          score += 30;
+        }
+      }
+
+      const bumpCount = destinationSpace.pegs.filter(existingPegId => {
+        const [pegPlayerId] = existingPegId.split('-peg-');
+        return pegPlayerId !== player.id;
+      }).length;
+      if (bumpCount > 0) {
+        score += 180 + (bumpCount * 40);
+      }
+
+      return score;
+    };
+
+    const drawReplacementHand = (state: GameState) => {
+      const turnPlayer = state.players[state.currentPlayerIndex];
+      state.discardPile.push(...turnPlayer.hand);
+      turnPlayer.hand = [];
+
+      for (let index = 0; index < 5; index += 1) {
+        if (state.drawPile.length === 0 && state.discardPile.length > 0) {
+          state.drawPile = [...state.discardPile].sort(() => Math.random() - 0.5);
+          state.discardPile = [];
+        }
+
+        if (state.drawPile.length > 0) {
+          turnPlayer.hand.push(state.drawPile.pop()!);
+        }
+      }
+    };
+
+    try {
+      const baselineState = normalizeGameState(cloneGameState(gameState));
+      const turnPlayer = baselineState.players[baselineState.currentPlayerIndex];
+
+      if (!turnPlayer) {
+        return {
+          ok: false,
+          error: 'Current player is unavailable for auto-play.'
+        };
+      }
+
+      if (baselineState.phase !== 'playing') {
+        if (baselineState.phase === 'gameOver' || isGameOver(baselineState)) {
+          updateGameState({
+            ...baselineState,
+            phase: 'gameOver'
+          });
+          clearInteractionState();
+          return {
+            ok: true,
+            value: {
+              action: 'game_over',
+              playerId: turnPlayer.id
+            }
+          };
+        }
+
+        return {
+          ok: false,
+          error: `Auto-play is only available during the playing phase. Current phase: ${baselineState.phase}`
+        };
+      }
+
+      let sequence = 0;
+      const candidates: AutoPlayCandidate[] = [];
+      const pushCandidate = (candidate: Omit<AutoPlayCandidate, 'sequence'>) => {
+        candidates.push({
+          ...candidate,
+          sequence
+        });
+        sequence += 1;
+      };
+
+      turnPlayer.hand.forEach(card => {
+        if (card.rank === '9') {
+          const regularNineMoves = expandMoves(
+            getPossibleMoves(baselineState, turnPlayer.id, card.id, {
+              direction: 'forward',
+              steps: 9
+            })
+          ).map(move => ({
+            ...move,
+            metadata: {
+              ...move.metadata,
+              nineCardMove: {
+                direction: 'forward' as const,
+                steps: 9,
+                isFirstMove: false
+              }
+            }
+          }));
+
+          regularNineMoves.forEach(move => {
+            pushCandidate({
+              priority: cardPriority(card) + scoreMove(baselineState, turnPlayer, move),
+              card,
+              firstMove: move,
+              endTurnAction: 'play_move'
+            });
+          });
+
+          (['forward', 'backward'] as const).forEach(direction => {
+            for (let firstSteps = 1; firstSteps <= 8; firstSteps += 1) {
+              const firstMoves = expandMoves(
+                getPossibleMoves(baselineState, turnPlayer.id, card.id, {
+                  direction,
+                  steps: firstSteps
+                })
+              ).map(move => ({
+                ...move,
+                metadata: {
+                  ...move.metadata,
+                  nineCardMove: {
+                    direction,
+                    steps: firstSteps,
+                    isFirstMove: true
+                  }
+                }
+              }));
+
+              firstMoves.forEach(firstMove => {
+                const firstMoveState = normalizeGameState(
+                  cloneGameState(applyMove(cloneGameState(baselineState), firstMove).newState)
+                );
+
+                const secondDirection: 'forward' | 'backward' = direction === 'forward'
+                  ? 'backward'
+                  : 'forward';
+                const secondSteps = 9 - firstSteps;
+
+                const secondMoves = expandMoves(
+                  getPossibleMoves(firstMoveState, turnPlayer.id, card.id, {
+                    direction: secondDirection,
+                    steps: secondSteps,
+                    isSecondMove: true,
+                    firstMovePegId: firstMove.pegId
+                  })
+                ).map(move => ({
+                  ...move,
+                  metadata: {
+                    ...move.metadata,
+                    nineCardMove: {
+                      direction: secondDirection,
+                      steps: secondSteps,
+                      isFirstMove: false
+                    }
+                  }
+                }));
+
+                if (secondMoves.length === 0) {
+                  pushCandidate({
+                    priority: cardPriority(card) + scoreMove(baselineState, turnPlayer, firstMove) - 180,
+                    card,
+                    firstMove,
+                    endTurnAction: 'skip_second_move'
+                  });
+                  return;
+                }
+
+                secondMoves.forEach(secondMove => {
+                  pushCandidate({
+                    priority:
+                      cardPriority(card) +
+                      45 +
+                      scoreMove(baselineState, turnPlayer, firstMove) +
+                      scoreMove(firstMoveState, turnPlayer, secondMove),
+                    card,
+                    firstMove,
+                    secondMove,
+                    endTurnAction: 'play_move'
+                  });
+                });
+              });
+            }
+          });
+          return;
+        }
+
+        if (card.rank === '7') {
+          const regularSevenMoves = expandMoves(
+            getPossibleMoves(baselineState, turnPlayer.id, card.id)
+          );
+
+          regularSevenMoves.forEach(move => {
+            pushCandidate({
+              priority: cardPriority(card) + scoreMove(baselineState, turnPlayer, move),
+              card,
+              firstMove: move,
+              endTurnAction: 'play_move'
+            });
+          });
+
+          for (let firstSteps = 1; firstSteps <= 6; firstSteps += 1) {
+            const firstMoves = expandMoves(
+              getPossibleMoves(baselineState, turnPlayer.id, card.id, {
+                steps: firstSteps
+              })
+            ).map(move => ({
+              ...move,
+              metadata: {
+                ...move.metadata,
+                sevenCardMove: {
+                  steps: firstSteps,
+                  isFirstMove: true
+                }
+              }
+            }));
+
+            firstMoves.forEach(firstMove => {
+              const firstMoveState = normalizeGameState(
+                cloneGameState(applyMove(cloneGameState(baselineState), firstMove).newState)
+              );
+
+              const secondSteps = 7 - firstSteps;
+              const secondMoves = expandMoves(
+                getPossibleMoves(firstMoveState, turnPlayer.id, card.id, {
+                  steps: secondSteps,
+                  isSecondMove: true,
+                  firstMovePegId: firstMove.pegId
+                })
+              ).map(move => ({
+                ...move,
+                metadata: {
+                  ...move.metadata,
+                  sevenCardMove: {
+                    steps: secondSteps,
+                    isFirstMove: false
+                  }
+                }
+              }));
+
+              secondMoves.forEach(secondMove => {
+                pushCandidate({
+                  priority:
+                    cardPriority(card) +
+                    40 +
+                    scoreMove(baselineState, turnPlayer, firstMove) +
+                    scoreMove(firstMoveState, turnPlayer, secondMove),
+                  card,
+                  firstMove,
+                  secondMove,
+                  endTurnAction: 'play_move'
+                });
+              });
+            });
+          }
+          return;
+        }
+
+        const regularMoves = expandMoves(
+          getPossibleMoves(baselineState, turnPlayer.id, card.id)
+        );
+
+        regularMoves.forEach(move => {
+          pushCandidate({
+            priority: cardPriority(card) + scoreMove(baselineState, turnPlayer, move),
+            card,
+            firstMove: move,
+            endTurnAction: 'play_move'
+          });
+        });
+      });
+
+      if (candidates.length === 0) {
+        if (!canUseDiscardButton(baselineState, turnPlayer)) {
+          return {
+            ok: false,
+            error: `No legal moves found for ${turnPlayer.id} and discard is unavailable.`
+          };
+        }
+
+        const discardedState = normalizeGameState(cloneGameState(baselineState));
+        drawReplacementHand(discardedState);
+        handleEndTurn(discardedState, 'discard_hand');
+        clearInteractionState();
+        return {
+          ok: true,
+          value: {
+            action: 'discard_hand',
+            playerId: turnPlayer.id
+          }
+        };
+      }
+
+      candidates.sort((left, right) => {
+        if (right.priority !== left.priority) {
+          return right.priority - left.priority;
+        }
+
+        return left.sequence - right.sequence;
+      });
+
+      const selectedCandidate = candidates[0];
+      let nextState = normalizeGameState(cloneGameState(baselineState));
+
+      const firstResult = applyMove(nextState, selectedCandidate.firstMove);
+      nextState = normalizeGameState(cloneGameState(firstResult.newState));
+      let finalMove = selectedCandidate.firstMove;
+
+      if (selectedCandidate.secondMove) {
+        const secondResult = applyMove(nextState, selectedCandidate.secondMove);
+        nextState = normalizeGameState(cloneGameState(secondResult.newState));
+        finalMove = selectedCandidate.secondMove;
+      }
+
+      if (isGameOver(nextState)) {
+        const gameOverState: GameState = {
+          ...nextState,
+          phase: 'gameOver'
+        };
+
+        if (isMultiplayer && onMove) {
+          setGameState(gameOverState);
+          onMove({
+            type: 'play_move',
+            nextGameState: gameOverState
+          });
+        } else {
+          updateGameState(gameOverState);
+        }
+
+        clearInteractionState();
+        return {
+          ok: true,
+          value: {
+            action: 'game_over',
+            playerId: turnPlayer.id,
+            cardId: selectedCandidate.card.id,
+            pegId: finalMove.pegId,
+            destination: finalMove.destinations[0]
+          }
+        };
+      }
+
+      handleEndTurn(nextState, selectedCandidate.endTurnAction);
+      clearInteractionState();
+
+      return {
+        ok: true,
+        value: {
+          action: 'play_move',
+          playerId: turnPlayer.id,
+          cardId: selectedCandidate.card.id,
+          pegId: finalMove.pegId,
+          destination: finalMove.destinations[0]
+        }
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Failed to auto-play a single turn.'
+      };
+    }
   };
+
+  useEffect(() => {
+    const mode = isMultiplayer ? 'online' : 'offline';
+
+    const api: JokerPursuitHarnessApi = {
+      version: '1.0',
+      mode,
+      getSnapshot: () => ({
+        mode,
+        timestamp: Date.now(),
+        gameState: serializeGameState(gameState),
+        currentPlayerId: gameState.players[gameState.currentPlayerIndex]?.id,
+        selectedCardId,
+        selectedPegId,
+        selectableSpaceIds: [...selectableSpaceIds],
+        selectablePegIds: [...selectablePegIds],
+        promptMessage,
+        metadata: {
+          devMode,
+          movePegsMode,
+          preservePlayMode,
+          nineCardState,
+          sevenCardState
+        }
+      }),
+      replaceGameState: (state: GameState) => {
+        try {
+          const nextState = normalizeGameState(cloneGameState(state));
+          updateGameState(nextState);
+          clearInteractionState();
+          return { ok: true };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : 'Failed to replace game state.'
+          };
+        }
+      },
+      setCurrentPlayer: (playerId: string) => {
+        const result = setCurrentPlayerById(gameState, playerId);
+        if (!result.ok || !result.value) {
+          return { ok: false, error: result.error };
+        }
+
+        updateGameState(result.value);
+        clearInteractionState();
+        return { ok: true };
+      },
+      setPlayerHand: (playerId: string, cards: HarnessCardInput[]) => {
+        const result = setPlayerHandById(gameState, playerId, cards);
+        if (!result.ok || !result.value) {
+          return { ok: false, error: result.error };
+        }
+
+        updateGameState(result.value);
+        clearInteractionState();
+        return { ok: true };
+      },
+      placePeg: (pegId: string, spaceId: string) => {
+        const result = placePegOnBoard(gameState, pegId, spaceId);
+        if (!result.ok || !result.value) {
+          return { ok: false, error: result.error };
+        }
+
+        updateGameState(result.value);
+        return { ok: true };
+      },
+      setPegPositions: (placements: Record<string, string>) => {
+        const result = setPegPositionsOnBoard(gameState, placements);
+        if (!result.ok || !result.value) {
+          return { ok: false, error: result.error };
+        }
+
+        updateGameState(result.value);
+        return { ok: true };
+      },
+      listPossibleMoves: (
+        playerId: string,
+        cardId: string,
+        options?: HarnessMoveOptions
+      ) => {
+        try {
+          const moves = getPossibleMoves(gameState, playerId, cardId, options);
+          return { ok: true, value: moves };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : 'Failed to list possible moves.'
+          };
+        }
+      },
+      selectPeg: (pegId: string) => {
+        handlePegSelectRef.current(pegId);
+        return { ok: true };
+      },
+      selectSpace: (spaceId: string) => {
+        handleSpaceSelectRef.current(spaceId);
+        return { ok: true };
+      },
+      applyMove: (move: Move) => {
+        try {
+          const result = applyMove(gameState, move);
+          updateGameState(result.newState);
+          return {
+            ok: true,
+            value: serializeGameState(result.newState)
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : 'Failed to apply move.'
+          };
+        }
+      },
+      selectCard: (cardId: string | null) => {
+        setSelectedCardId(cardId);
+        return { ok: true };
+      },
+      clearInteraction: () => {
+        clearInteractionState();
+        return { ok: true };
+      },
+      setDevFlags: (flags) => {
+        if (typeof flags.devMode === 'boolean') {
+          setDevMode(flags.devMode);
+        }
+        if (typeof flags.movePegsMode === 'boolean') {
+          setMovePegsMode(flags.movePegsMode);
+        }
+        if (typeof flags.preservePlayMode === 'boolean') {
+          setPreservePlayMode(flags.preservePlayMode);
+        }
+        return { ok: true };
+      },
+      autoPlaySingleTurn: () => {
+        return runHarnessAutoPlaySingleTurn();
+      },
+      syncToServer: async () => {
+        if (!onHarnessSyncToServer) {
+          return {
+            ok: false,
+            error: 'syncToServer is only available in multiplayer mode.'
+          };
+        }
+
+        return onHarnessSyncToServer();
+      },
+      commitGameStateToServer: async (nextState?: GameState) => {
+        if (!onHarnessCommitStateToServer) {
+          return {
+            ok: false,
+            error: 'commitGameStateToServer is only available in multiplayer mode.'
+          };
+        }
+
+        const candidate = normalizeGameState(cloneGameState(nextState || gameState));
+        const commitResult = await onHarnessCommitStateToServer(candidate);
+        if (commitResult.ok) {
+          updateGameState(candidate);
+          clearInteractionState();
+        }
+
+        return commitResult;
+      }
+    };
+
+    window.__JP_HARNESS__ = api;
+
+    return () => {
+      if (window.__JP_HARNESS__ === api) {
+        delete window.__JP_HARNESS__;
+      }
+    };
+  // Harness bridge intentionally closes over live controller handlers/state each render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    gameState,
+    isMultiplayer,
+    selectedCardId,
+    selectedPegId,
+    selectableSpaceIds,
+    selectablePegIds,
+    promptMessage,
+    devMode,
+    movePegsMode,
+    preservePlayMode,
+    nineCardState,
+    sevenCardState,
+    updateGameState,
+    clearInteractionState,
+    onHarnessSyncToServer,
+    onHarnessCommitStateToServer
+  ]);
   
   useEffect(() => {
     // Create initial floating elements
@@ -1843,40 +2571,41 @@ const GameController: React.FC<GameControllerProps> = ({
     // For 9 card, enforce that total steps must equal 9
     const firstMoveSteps = nineCardState.steps || 0;
     const secondMoveSteps = 9 - firstMoveSteps;
+    const firstMovePegId = pegId;
     
     Log(`First move used ${firstMoveSteps} steps, second move will use ${secondMoveSteps} steps (total: 9)`);
     
     // Find selectable pegs for the second move (all pegs EXCEPT the one used in the first move)
-    const selectablePegs = currentPlayer.pegs.filter(pegId => {
+    const selectablePegs = currentPlayer.pegs.filter(candidatePegId => {
       // Skip the peg used in the first move
-      if (pegId === nineCardState.firstMovePegId) {
-        Log(`Skipping peg ${pegId} as it was used for first move`);
+      if (candidatePegId === firstMovePegId) {
+        Log(`Skipping peg ${candidatePegId} as it was used for first move`);
         return false;
       }
       
       // Skip pegs that are in castle spaces
-      const pegSpace = findSpaceForPeg(gameState, pegId);
+      const pegSpace = findSpaceForPeg(gameState, candidatePegId);
       if (pegSpace?.type === 'castle') {
-        Log(`Skipping peg ${pegId} as it's in a castle space`);
+        Log(`Skipping peg ${candidatePegId} as it's in a castle space`);
         return false;
       }
       
       // Skip pegs that are in home spaces
       if (pegSpace?.type === 'home') {
-        Log(`Skipping peg ${pegId} as it's in a home space`);
+        Log(`Skipping peg ${candidatePegId} as it's in a home space`);
         return false;
       }
       
       // This peg is selectable
-      Log(`Peg ${pegId} is selectable for second move of 9 card (at space ${pegSpace?.id})`);
+      Log(`Peg ${candidatePegId} is selectable for second move of 9 card (at space ${pegSpace?.id})`);
       return true;
     });
     
     Log(`Found ${selectablePegs.length} possible pegs for 9 card second move (excluding first move peg and home/castle pegs)`);
     
-    // Check if there are valid moves for any of these pegs
-    let hasValidMoves = false;
-    selectablePegs.forEach(pegId => {
+    // Check which pegs actually have valid moves
+    const selectablePegsWithMoves: string[] = [];
+    selectablePegs.forEach(candidatePegId => {
       const moves = getPossibleMoves(
         gameState, 
         currentPlayer.id, 
@@ -1885,30 +2614,37 @@ const GameController: React.FC<GameControllerProps> = ({
           direction: secondMoveDirection,
           steps: secondMoveSteps, // Use secondMoveSteps here instead of remainingSteps
           isSecondMove: true,
-          firstMovePegId: nineCardState.firstMovePegId
+          firstMovePegId: firstMovePegId
         }
       );
       
-      if (moves.length > 0) {
-        hasValidMoves = true;
+      const candidatePegHasMove = moves.some(move => move.pegId === candidatePegId);
+      if (candidatePegHasMove) {
+        selectablePegsWithMoves.push(candidatePegId);
       }
     });
     
-    if (!hasValidMoves) {
+    if (selectablePegsWithMoves.length === 0) {
       Log('No valid moves for any peg in second part of 9 card split');
+      setSelectablePegIds([]);
       setNineCardState(prev => ({
         ...prev,
-        state: 'NO_VALID_SECOND_MOVES'
+        state: 'NO_VALID_SECOND_MOVES',
+        firstMovePegId: firstMovePegId,
+        firstMoveComplete: true,
+        remainingSteps: secondMoveSteps
       }));
       setPromptMessage('No valid moves available for the second part of your 9 card split.');
       return;
     }
     
     // Set the selectable pegs for the second move
-    setSelectablePegIds(selectablePegs);
+    setSelectablePegIds(selectablePegsWithMoves);
     setNineCardState(prev => ({
       ...prev,
       state: 'SECOND_MOVE_READY',
+      firstMovePegId: firstMovePegId,
+      firstMoveComplete: true,
       remainingSteps: secondMoveSteps // Store the correct secondMoveSteps value
     }));
     
@@ -2640,6 +3376,9 @@ const GameController: React.FC<GameControllerProps> = ({
       logDebug(`Invalid space selection: ${spaceId} - either no peg selected or space not selectable`);
     }
   };
+
+  handlePegSelectRef.current = handlePegSelect;
+  handleSpaceSelectRef.current = handleSpaceSelect;
   
   // Handle end turn
   const handleEndTurn = (
@@ -2776,6 +3515,7 @@ const GameController: React.FC<GameControllerProps> = ({
           ) : (
             <button 
               className="shuffle-button"
+              data-testid="game-shuffle-cards"
               onClick={handleShuffleAndDeal}
             >
               <span className="button-text">Shuffle Cards</span>
@@ -2830,6 +3570,7 @@ const GameController: React.FC<GameControllerProps> = ({
                 <input 
                   type="checkbox" 
                   checked={devMode} 
+                  data-testid="dev-mode-toggle"
                   onChange={() => setDevMode(!devMode)} 
                 />
                 <span className="dev-slider"></span>
@@ -2841,6 +3582,7 @@ const GameController: React.FC<GameControllerProps> = ({
                 <div className="dev-controls-group">
                   <button
                     className="dev-button shuffle-hand-button"
+                    data-testid="dev-shuffle-hand"
                     onClick={handleShuffleHand}
                   >
                     Shuffle Hand
@@ -2848,6 +3590,7 @@ const GameController: React.FC<GameControllerProps> = ({
                   
                   <button
                     className={`dev-button move-pegs-button ${movePegsMode ? 'active' : ''}`}
+                    data-testid="dev-edit-pegs"
                     onClick={() => setMovePegsMode(!movePegsMode)}
                   >
                     {movePegsMode ? 'Exit Peg Edit Mode' : 'Edit Peg Positions'}
@@ -2855,6 +3598,7 @@ const GameController: React.FC<GameControllerProps> = ({
                   
                   <button
                     className={`dev-button preserve-play-button ${preservePlayMode ? 'active' : ''}`}
+                    data-testid="dev-auto-end-turn"
                     onClick={() => setPreservePlayMode(!preservePlayMode)}
                   >
                     {preservePlayMode ? 'Auto End Turn Off' : 'Auto End Turn On'}
@@ -2951,7 +3695,9 @@ const GameController: React.FC<GameControllerProps> = ({
             {nineCardState.state === 'NO_VALID_SECOND_MOVES' && (
               <div className="skip-second-move">
                 <p>No valid moves are available for the second part of your 9 card split.</p>
-                <button onClick={handleSkipSecondMove}>Skip Second Move & End Turn</button>
+                <button data-testid="nine-skip-second-move" onClick={handleSkipSecondMove}>
+                  Skip Second Move & End Turn
+                </button>
               </div>
             )}
             
@@ -2960,18 +3706,18 @@ const GameController: React.FC<GameControllerProps> = ({
                 {/* Initial option selection: Move 9 or Split 9 */}
                 {nineCardState.state === 'INITIAL' && !nineCardState.splitSelected && (
                   <>
-                    <button onClick={() => handleNineCardOption('move')}>Move 9: move 1 peg forward 9</button>
-                    <button onClick={() => handleNineCardOption('split')}>Split 9: 2 pegs, 1 moves forward, 1 moves backward, total movement adds up to 9</button>
+                    <button data-testid="nine-option-move" onClick={() => handleNineCardOption('move')}>Move 9: move 1 peg forward 9</button>
+                    <button data-testid="nine-option-split" onClick={() => handleNineCardOption('split')}>Split 9: 2 pegs, 1 moves forward, 1 moves backward, total movement adds up to 9</button>
                   </>
                 )}
                 
                 {/* Direction selection for split move */}
                 {nineCardState.state === 'INITIAL' && nineCardState.splitSelected && (
                   <div className="direction-input">
-                    <button onClick={() => handleNineCardDirection('forward')}>
+                    <button data-testid="nine-direction-forward" onClick={() => handleNineCardDirection('forward')}>
                       <span>Forward First</span>
                     </button>
-                    <button onClick={() => handleNineCardDirection('backward')}>
+                    <button data-testid="nine-direction-backward" onClick={() => handleNineCardDirection('backward')}>
                       <span>Backward First</span>
                     </button>
                   </div>
@@ -2986,6 +3732,7 @@ const GameController: React.FC<GameControllerProps> = ({
                       {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
                         <button 
                           key={num}
+                          data-testid={`nine-step-${num}`}
                           onClick={() => handleNineCardSteps(num)}
                           className="step-button"
                         >
@@ -3006,8 +3753,8 @@ const GameController: React.FC<GameControllerProps> = ({
               <div className="seven-card-controls">
                 {!sevenCardState.isSplit && !sevenCardState.firstMoveSteps && (
                   <>
-                    <button onClick={() => handleSevenCardOption('move')}>Move 1 peg forward 7</button>
-                    <button onClick={() => handleSevenCardOption('split')}>Split between 2 pegs</button>
+                    <button data-testid="seven-option-move" onClick={() => handleSevenCardOption('move')}>Move 1 peg forward 7</button>
+                    <button data-testid="seven-option-split" onClick={() => handleSevenCardOption('split')}>Split between 2 pegs</button>
                   </>
                 )}
                 {sevenCardState.isSplit && !sevenCardState.firstMoveSteps && (
@@ -3015,6 +3762,7 @@ const GameController: React.FC<GameControllerProps> = ({
                     {[1, 2, 3, 4, 5, 6].map(num => (
                       <button 
                         key={num}
+                        data-testid={`seven-step-${num}`}
                         onClick={() => handleSevenCardSteps(num)}
                       >
                         {num}
@@ -3034,6 +3782,7 @@ const GameController: React.FC<GameControllerProps> = ({
             {!isMultiplayer && !showCards && (
               <button 
                 className="reveal-hand-button"
+                data-testid="game-reveal-hand"
                 onClick={handleRevealHand}
                 style={{ '--player-color': currentPlayerColor } as React.CSSProperties}
               >

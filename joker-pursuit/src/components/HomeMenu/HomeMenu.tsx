@@ -74,12 +74,12 @@ const HomeMenu: React.FC<HomeMenuProps> = ({ onStartGame, onStartOnlineGame }) =
         <p className="game-subtitle">A Classic Card-Based Board Game</p>
         
         <div className="button-container">
-          <button className="skeuomorphic-button primary-button" onClick={onStartGame}>
+          <button className="skeuomorphic-button primary-button" data-testid="home-local-game" onClick={onStartGame}>
             <span className="button-text">Local Game</span>
             <div className="button-shine"></div>
           </button>
           
-          <button className="skeuomorphic-button primary-button" onClick={onStartOnlineGame}>
+          <button className="skeuomorphic-button primary-button" data-testid="home-play-online" onClick={onStartOnlineGame}>
             <span className="button-text">Play Online</span>
             <div className="button-shine"></div>
           </button>

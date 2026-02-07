@@ -27,7 +27,12 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "server": "cd server && npm run dev",
-    "dev": "concurrently \"npm run start\" \"npm run server\""
+    "dev": "concurrently \"npm run start\" \"npm run server\"",
+    "harness": "node scripts/jp-harness.mjs all",
+    "harness:offline": "node scripts/jp-harness.mjs offline",
+    "harness:online": "node scripts/jp-harness.mjs online",
+    "harness:full:offline": "node scripts/jp-harness.mjs offline-full-game-autoplay",
+    "harness:full:online": "node scripts/jp-harness.mjs online-full-game-autoplay"
   },
   "eslintConfig": {
     "extends": [
