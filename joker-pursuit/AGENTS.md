@@ -124,11 +124,17 @@ If any step fails, report the failure and reason clearly.
 
 ## 5) Completion Workflow (Default)
 
-Unless the user explicitly says otherwise, complete all steps:
+Unless the user explicitly says otherwise, always:
 1. Commit intended files only.
 2. Push the branch to `origin`.
-3. Deploy frontend to Vercel (production).
-4. Deploy backend to Render (production).
+
+Deploys are conditional by change scope:
+1. Deploy frontend to Vercel only when frontend/runtime client surface changed.
+   - Typical triggers: `src/**`, `public/**`, root `package*.json`, `vercel.json`, frontend env handling.
+2. Deploy backend to Render only when backend/deployment server surface changed.
+   - Typical triggers: `server/**`, `render.yaml`, backend env/runtime settings.
+3. If both surfaces changed, deploy both.
+4. If neither surface changed (docs-only/tooling-only updates), skip deploys.
 
 Standard deploy commands in this repo:
 - Vercel: `vercel --prod --yes`
@@ -141,5 +147,5 @@ Do not stage generated artifacts like `reports/` unless explicitly requested.
 Include all of the following in the final response:
 1. Commit hash and message.
 2. Branch + push target.
-3. Vercel deployment URL (or exact blocker).
-4. Render deploy ID/status and service URL (or exact blocker).
+3. Deploy decision summary (why Vercel and/or Render was run or skipped).
+4. If deployed: Vercel deployment URL and/or Render deploy ID/status + service URL.
