@@ -15,17 +15,31 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
   const { 
     joinRoom, 
     roomCode: connectedRoomCode, 
+    playerId,
+    sessionToken,
     players, 
     isRejoining,
     error, 
     clearError 
   } = useMultiplayer();
 
+  const hasJoinedRoom = Boolean(
+    connectedRoomCode &&
+    sessionToken &&
+    playerId &&
+    players.some(player => player.id === playerId)
+  );
+
   React.useEffect(() => {
-    if (!connectedRoomCode && initialRoomCode) {
-      setRoomCode(initialRoomCode.toUpperCase());
+    if (hasJoinedRoom) {
+      return;
     }
-  }, [connectedRoomCode, initialRoomCode]);
+
+    const nextRoomCode = connectedRoomCode || initialRoomCode;
+    if (nextRoomCode) {
+      setRoomCode(nextRoomCode.toUpperCase());
+    }
+  }, [hasJoinedRoom, connectedRoomCode, initialRoomCode]);
 
   const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +62,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
         <h2>Join Game Room</h2>
         <p className="multiplayer-lead">Enter your name and room code to join an active match.</p>
 
-        {!connectedRoomCode ? (
+        {!hasJoinedRoom ? (
           <form onSubmit={handleJoinRoom} className="multiplayer-form">
             {isRejoining && (
               <p className="helper-text">Attempting to reclaim your previous seat...</p>
