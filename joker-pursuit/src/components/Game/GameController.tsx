@@ -288,12 +288,37 @@ const hasLegalMoveForCard = (gameState: GameState, player: Player, card: Card): 
         const splitFirstMoves = getExecutableMoves(gameState, player.id, card.id, {
           direction,
           steps: firstSteps
-        });
+        }).map(move => ({
+          ...move,
+          metadata: {
+            ...move.metadata,
+            nineCardMove: {
+              direction,
+              steps: firstSteps,
+              isFirstMove: true
+            }
+          }
+        }));
 
-        if (splitFirstMoves.length > 0) {
-          // A legal first split move means the card is playable.
-          // If second split moves are unavailable, UI supports skip-second-move.
-          return true;
+        const secondDirection: 'forward' | 'backward' = direction === 'forward'
+          ? 'backward'
+          : 'forward';
+        const secondSteps = 9 - firstSteps;
+
+        for (const firstMove of splitFirstMoves) {
+          const firstMoveState = normalizeGameState(
+            cloneGameState(applyMove(cloneGameState(gameState), firstMove).newState)
+          );
+          const secondMoves = getExecutableMoves(firstMoveState, player.id, card.id, {
+            direction: secondDirection,
+            steps: secondSteps,
+            isSecondMove: true,
+            firstMovePegId: firstMove.pegId
+          });
+
+          if (secondMoves.length > 0) {
+            return true;
+          }
         }
       }
     }
@@ -1042,12 +1067,6 @@ const GameController: React.FC<GameControllerProps> = ({
                 }));
 
                 if (secondMoves.length === 0) {
-                  pushCandidate({
-                    priority: cardPriority(card) + scoreMove(baselineState, turnPlayer, firstMove) - 180,
-                    card,
-                    firstMove,
-                    endTurnAction: 'skip_second_move'
-                  });
                   return;
                 }
 
