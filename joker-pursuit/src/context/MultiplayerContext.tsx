@@ -105,7 +105,7 @@ const readStoredSession = (roomCode: string): StoredSession | null => {
   }
 
   try {
-    const raw = window.localStorage.getItem(getSessionStorageKey(roomCode));
+    const raw = window.sessionStorage.getItem(getSessionStorageKey(roomCode));
     if (!raw) {
       return null;
     }
@@ -138,7 +138,9 @@ const writeStoredSession = (roomCode: string, sessionToken: string, playerId: st
       playerId
     };
 
-    window.localStorage.setItem(getSessionStorageKey(roomCode), JSON.stringify(payload));
+    // Keep session identity scoped to the current tab to avoid seat collisions
+    // when users open invite links in additional tabs.
+    window.sessionStorage.setItem(getSessionStorageKey(roomCode), JSON.stringify(payload));
   } catch (error) {
     console.error('Failed to persist multiplayer session', error);
   }
@@ -150,6 +152,8 @@ const clearStoredSession = (roomCode: string | null) => {
   }
 
   try {
+    window.sessionStorage.removeItem(getSessionStorageKey(roomCode));
+    // Cleanup legacy storage from older builds that used localStorage.
     window.localStorage.removeItem(getSessionStorageKey(roomCode));
   } catch (error) {
     console.error('Failed to clear stored multiplayer session', error);
