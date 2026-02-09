@@ -43,6 +43,61 @@ interface BoardTransform {
   translate: Point;
 }
 
+const DEFAULT_BOARD_CENTER: Point = { x: 700, y: 700 };
+
+const resolveBoardCenter = (board: BoardModel): Point => {
+  if (!board?.allSpaces) {
+    return DEFAULT_BOARD_CENTER;
+  }
+
+  const startingSpaces = getSpacesArray(board.allSpaces).filter(space => space.type === 'starting');
+  if (startingSpaces.length > 0) {
+    return { x: startingSpaces[0].x, y: startingSpaces[0].y };
+  }
+
+  const castleSpaces = getSpacesArray(board.allSpaces).filter(space => space.type === 'castle');
+  if (castleSpaces.length === 0) {
+    return DEFAULT_BOARD_CENTER;
+  }
+
+  const sumX = castleSpaces.reduce((sum, space) => sum + space.x, 0);
+  const sumY = castleSpaces.reduce((sum, space) => sum + space.y, 0);
+
+  return {
+    x: sumX / castleSpaces.length,
+    y: sumY / castleSpaces.length
+  };
+};
+
+const resolveBackgroundCircleSize = (board: BoardModel, boardCenter: Point): number => {
+  if (!board?.allSpaces) {
+    return 800;
+  }
+
+  const spaces = getSpacesArray(board.allSpaces).filter(space => space.type !== 'starting');
+  if (spaces.length === 0) {
+    return 800;
+  }
+
+  let maxDistance = 0;
+  for (const space of spaces) {
+    if (!space.x || !space.y) {
+      continue;
+    }
+
+    const dx = space.x - boardCenter.x;
+    const dy = space.y - boardCenter.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const totalDistance = distance + 30;
+
+    if (totalDistance > maxDistance) {
+      maxDistance = totalDistance;
+    }
+  }
+
+  return maxDistance > 0 ? maxDistance * 2 + 60 : 800;
+};
+
 const Board: React.FC<BoardProps> = ({ 
   board, 
   onSpaceClick, 
@@ -58,14 +113,16 @@ const Board: React.FC<BoardProps> = ({
   const [transform, setTransform] = useState<BoardTransform>({ scale: 1, translate: { x: 0, y: 0 } });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<Point>({ x: 0, y: 0 });
-  const [boardCenter, setBoardCenter] = useState<Point>({ x: 700, y: 700 }); // Consistent with BoardModel center coordinates
+  const [boardCenter, setBoardCenter] = useState<Point>(() => resolveBoardCenter(board));
   const boardRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   // Track if this is the initial mount
   const isInitialMount = useRef(true);
 
   // State for background circle size
-  const [backgroundCircleSize, setBackgroundCircleSize] = useState<number>(1300);
+  const [backgroundCircleSize, setBackgroundCircleSize] = useState<number>(() =>
+    resolveBackgroundCircleSize(board, resolveBoardCenter(board))
+  );
   const [activeMoveHighlight, setActiveMoveHighlight] = useState<BoardProps['moveHighlight']>();
   
   // Center and scale the board appropriately on mount and when board dimensions change
@@ -81,66 +138,13 @@ const Board: React.FC<BoardProps> = ({
   
   // Calculate the true center of the board based on castle positions
   const calculateTrueCenter = useCallback(() => {
-    if (!board.allSpaces) return { x: 700, y: 700 }; // Default center
-    
-    // Find the starting circle which has the red dot at the center
-    const startingSpaces = getSpacesArray(board.allSpaces)
-      .filter(space => space.type === 'starting');
-    
-    if (startingSpaces.length > 0) {
-      // Use the first starting circle as the center (the red dot)
-      return { x: startingSpaces[0].x, y: startingSpaces[0].y };
-    }
-    
-    // Fallback: Find all castle spaces
-    const castleSpaces = getSpacesArray(board.allSpaces)
-      .filter(space => space.type === 'castle');
-    
-    if (castleSpaces.length === 0) return { x: 700, y: 700 }; // Default if no castles
-    
-    // Calculate the average position of all castle spaces
-    const sumX = castleSpaces.reduce((sum, space) => sum + space.x, 0);
-    const sumY = castleSpaces.reduce((sum, space) => sum + space.y, 0);
-    
-    const center = {
-      x: sumX / castleSpaces.length,
-      y: sumY / castleSpaces.length
-    };
-    
-    return center;
-  }, [board.allSpaces]);
+    return resolveBoardCenter(board);
+  }, [board]);
 
   // Calculate the size for the background circle
   const calculateBackgroundCircleSize = useCallback(() => {
-    if (!board.allSpaces || board.allSpaces.size === 0) {
-      return 800; // Fallback default size
-    }
-
-    // Find the maximum distance from the center to any space
-    let maxDistance = 0;
-    const spaces = getSpacesArray(board.allSpaces)
-      .filter(space => space.type !== 'starting');
-    
-    for (const space of spaces) {
-      if (!space.x || !space.y) continue;
-      
-      const dx = space.x - boardCenter.x;
-      const dy = space.y - boardCenter.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      // Add the space size to account for the radius
-      const totalDistance = distance + 30; // 30px is approx half the space size
-      
-      if (totalDistance > maxDistance) {
-        maxDistance = totalDistance;
-      }
-    }
-    
-    // Make the diameter twice the max distance plus a small margin
-    const diameter = maxDistance * 2 + 60; // Add 60px margin (30px on each side)
-    
-    return diameter;
-  }, [board.allSpaces, boardCenter]);
+    return resolveBackgroundCircleSize(board, boardCenter);
+  }, [board, boardCenter]);
 
   // Add the centerBoard function that was missing
   const centerBoard = useCallback(() => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMultiplayer, MultiplayerPlayer } from '../../context/MultiplayerContext';
 import { GameState } from '../../models/GameState';
 import { createBoard } from '../../models/BoardModel';
@@ -268,7 +268,6 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const [currentTurnPlayer, setCurrentTurnPlayer] = useState<string>('');
   const [selectedColors, setSelectedColors] = useState<Record<string, string>>({});
   const [gamePhase, setGamePhase] = useState<'setup' | 'colorSelection' | 'shuffling' | 'playing'>('colorSelection');
-  const [gameControllerKey, setGameControllerKey] = useState<number>(0);
   const [recentMove, setRecentMove] = useState<RecentMove | null>(null);
   const [recentMoveHighlight, setRecentMoveHighlight] = useState<RecentMoveHighlight | undefined>(undefined);
   const [appliedSnapshotVersion, setAppliedSnapshotVersion] = useState<number>(0);
@@ -375,7 +374,6 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       setIsCurrentPlayerTurn(
         normalizedGameState.players[normalizedGameState.currentPlayerIndex]?.id === playerId
       );
-      setGameControllerKey(prev => prev + 1);
     };
 
     const onRoomSnapshot = (snapshot: {
@@ -642,6 +640,25 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     leaveRoom();
     onBack();
   };
+
+  const memoizedPlayerNames = useMemo(
+    () => gameState?.players.map(player => player.name) || [],
+    [gameState]
+  );
+
+  const memoizedPlayerColors = useMemo(
+    () =>
+      gameState?.players.reduce(
+        (colors, player) => ({ ...colors, [player.id]: player.color || '#CCCCCC' }),
+        {} as Record<string, string>
+      ) || {},
+    [gameState]
+  );
+
+  const memoizedGameStateOverride = useMemo(
+    () => (gameState ? cloneGameState(gameState) : undefined),
+    [gameState]
+  );
 
   const getPresenceLabel = (targetPlayerId: string): string => {
     const presence = playersPresence[targetPlayerId];
@@ -956,15 +973,14 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
           )}
           
           <GameController 
-            key={gameControllerKey}
-            playerNames={gameState.players.map(p => p.name)}
+            playerNames={memoizedPlayerNames}
             playerTeams={{}}
             numBoardSections={gameState.players.length}
-            playerColors={gameState.players.reduce((colors, p) => ({...colors, [p.id]: p.color}), {})}
+            playerColors={memoizedPlayerColors}
             isMultiplayer={true}
               isCurrentPlayerTurn={isCurrentPlayerTurn}
               onMove={handleMove}
-              gameStateOverride={cloneGameState(gameState)}
+              gameStateOverride={memoizedGameStateOverride}
               localPlayerId={playerId || undefined}
               recentMoveHighlight={recentMoveHighlight}
               onHarnessSyncToServer={handleHarnessSyncToServer}

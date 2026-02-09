@@ -941,16 +941,20 @@
   }
 
   .player-waiting-overlay {
-    position: static;
-    max-width: 100%;
-    margin: 88px 8px 0;
+    position: absolute;
+    top: 118px;
+    left: 8px;
+    width: min(300px, calc(100% - 16px));
+    margin: 0;
   }
 
   .opponent-play-panel {
-    position: static;
-    width: calc(100% - 16px);
-    margin: 10px 8px 0;
-    max-width: 220px;
+    position: absolute;
+    left: 8px;
+    top: 232px;
+    width: min(190px, calc(100% - 16px));
+    margin: 0;
+    max-width: none;
   }
 
   .leave-game-button {

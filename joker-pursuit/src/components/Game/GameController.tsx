@@ -815,6 +815,17 @@ const GameController: React.FC<GameControllerProps> = ({
     setSevenCardState({ state: 'INITIAL', isSplit: false });
   }, []);
 
+  // Keep multiplayer snapshots authoritative without remounting the controller.
+  useEffect(() => {
+    if (!isMultiplayer || !gameStateOverride) {
+      return;
+    }
+
+    setGameState(previousState => (previousState === gameStateOverride ? previousState : gameStateOverride));
+    clearInteractionState();
+    setBumpMessage(undefined);
+  }, [isMultiplayer, gameStateOverride, clearInteractionState]);
+
   const runHarnessAutoPlaySingleTurn = (): HarnessActionResult<{
     action: 'play_move' | 'discard_hand' | 'game_over';
     playerId: string;
