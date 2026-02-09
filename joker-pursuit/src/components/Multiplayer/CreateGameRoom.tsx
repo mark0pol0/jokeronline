@@ -10,7 +10,8 @@ interface CreateGameRoomProps {
 const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
   const [playerName, setPlayerName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [inviteCopyStatus, setInviteCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [returnCopyStatus, setReturnCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const {
     createRoom,
     roomCode,
@@ -49,6 +50,10 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
   const inviteLink = roomCode
     ? `${window.location.origin}/?room=${encodeURIComponent(roomCode)}`
     : '';
+  const selfPlayerName = players.find(player => player.id === playerId)?.name || playerName.trim();
+  const returnLink = roomCode
+    ? `${window.location.origin}/?room=${encodeURIComponent(roomCode)}${selfPlayerName ? `&name=${encodeURIComponent(selfPlayerName)}` : ''}`
+    : '';
   const resolvedHostPlayerId = hostPlayerId || players[0]?.id || null;
 
   const getPresenceLabel = (targetPlayerId: string): string => {
@@ -86,10 +91,24 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
 
     try {
       await navigator.clipboard.writeText(inviteLink);
-      setCopyStatus('copied');
+      setInviteCopyStatus('copied');
     } catch (copyError) {
       console.error('Failed to copy invite link', copyError);
-      setCopyStatus('failed');
+      setInviteCopyStatus('failed');
+    }
+  };
+
+  const handleCopyReturnLink = async () => {
+    if (!returnLink) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(returnLink);
+      setReturnCopyStatus('copied');
+    } catch (copyError) {
+      console.error('Failed to copy return link', copyError);
+      setReturnCopyStatus('failed');
     }
   };
 
@@ -162,10 +181,25 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
                 <span className="button-text">Copy Invite Link</span>
                 <div className="button-shine"></div>
               </button>
-              {copyStatus === 'copied' && (
+              {inviteCopyStatus === 'copied' && (
                 <p className="helper-text">Invite link copied to clipboard.</p>
               )}
-              {copyStatus === 'failed' && (
+              {inviteCopyStatus === 'failed' && (
+                <p className="helper-text">Could not copy automatically. Please copy the URL manually.</p>
+              )}
+              <button
+                type="button"
+                onClick={handleCopyReturnLink}
+                className="skeuomorphic-button secondary-button"
+                data-testid="create-room-copy-return-link"
+              >
+                <span className="button-text">Copy My Return Link</span>
+                <div className="button-shine"></div>
+              </button>
+              {returnCopyStatus === 'copied' && (
+                <p className="helper-text">Your return link copied to clipboard.</p>
+              )}
+              {returnCopyStatus === 'failed' && (
                 <p className="helper-text">Could not copy automatically. Please copy the URL manually.</p>
               )}
             </div>

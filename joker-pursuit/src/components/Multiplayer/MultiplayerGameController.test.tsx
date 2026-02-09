@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import MultiplayerGameController from './MultiplayerGameController';
 import { useMultiplayer } from '../../context/MultiplayerContext';
 import { createBoard } from '../../models/BoardModel';
@@ -165,6 +165,22 @@ describe('MultiplayerGameController', () => {
 
     expect(redButton).not.toBeDisabled();
     expect(blueButton).toBeDisabled();
+  });
+
+  test('requests sync and shows reconnect hydration UI when started game has no snapshot', async () => {
+    const requestSync = jest.fn().mockResolvedValue(undefined);
+    mockMultiplayerState({
+      isGameStarted: true,
+      requestSync
+    });
+
+    render(<MultiplayerGameController onBack={jest.fn()} />);
+
+    expect(screen.getByText('Reconnecting to your seat...')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(requestSync).toHaveBeenCalled();
+    });
   });
 
   test('applies equal-version snapshots so sync can recover optimistic drift', () => {

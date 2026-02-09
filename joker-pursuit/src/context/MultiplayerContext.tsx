@@ -161,7 +161,7 @@ const clearStoredSession = (roomCode: string | null) => {
   }
 };
 
-const getRoomCodeFromQueryString = (): string | null => {
+const readRoomCodeFromUrl = (): string | null => {
   if (typeof window === 'undefined') {
     return null;
   }
@@ -173,6 +173,66 @@ const getRoomCodeFromQueryString = (): string | null => {
 
   const normalized = queryCode.trim().toUpperCase();
   return normalized || null;
+};
+
+const readNameFromUrl = (): string | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const queryName = new URLSearchParams(window.location.search).get('name');
+  if (!queryName) {
+    return null;
+  }
+
+  const normalized = queryName.trim();
+  return normalized || null;
+};
+
+const replaceRoomUrl = (roomCode: string, optionalName?: string | null) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const normalizedRoomCode = roomCode.trim().toUpperCase();
+  if (!normalizedRoomCode) {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  url.searchParams.set('room', normalizedRoomCode);
+
+  const normalizedName = optionalName?.trim();
+  if (normalizedName) {
+    url.searchParams.set('name', normalizedName);
+  } else {
+    url.searchParams.delete('name');
+  }
+
+  const nextSearch = url.searchParams.toString();
+  const nextRelativeUrl = `${url.pathname}${nextSearch ? `?${nextSearch}` : ''}${url.hash}`;
+  window.history.replaceState(window.history.state, '', nextRelativeUrl);
+};
+
+const isTerminalRejoinError = (errorMessage: string): boolean => {
+  const normalized = errorMessage.toLowerCase();
+  return (
+    normalized.includes('session expired') ||
+    normalized.includes('seat no longer available') ||
+    normalized.includes('grace period expired')
+  );
+};
+
+const getRejoinErrorMessage = (errorMessage?: string): string => {
+  if (!errorMessage) {
+    return 'Session expired, enter your name to rejoin if seats are open.';
+  }
+
+  if (isTerminalRejoinError(errorMessage)) {
+    return 'Session expired, enter your name to rejoin if seats are open.';
+  }
+
+  return errorMessage;
 };
 
 // Create context with default values
@@ -222,7 +282,9 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
   const [isRejoining, setIsRejoining] = useState(false);
   const [stateVersion, setStateVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const autoRejoinAttempted = useRef<Set<string>>(new Set());
+  const lastBoundSocketIdRef = useRef<string | null>(null);
+  const rejoinInFlightRef = useRef(false);
+  const attemptedBindKeysRef = useRef<Set<string>>(new Set());
 
   const clearError = () => setError(null);
 
@@ -402,52 +464,126 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
     };
   }, [socket, playerId]);
 
-  // Auto rejoin if we have a stored token and a room code from either state or query string.
+  // Keep the active session bound to the latest socket connection.
   useEffect(() => {
-    if (!ENABLE_PROTOCOL_V2 || !socket || !isConnected || sessionToken) {
+    if (!ENABLE_PROTOCOL_V2 || !socket || !isConnected || !socket.id) {
       return;
     }
 
-    const candidateRoomCode = (roomCode || getRoomCodeFromQueryString() || '').toUpperCase();
-    if (!candidateRoomCode) {
+    if (rejoinInFlightRef.current) {
       return;
     }
 
-    const stored = readStoredSession(candidateRoomCode);
-    if (!stored?.sessionToken) {
+    const inMemoryRoomCode = roomCode?.trim().toUpperCase() || null;
+    const inMemoryToken = sessionToken?.trim() || null;
+    const inMemoryPlayerId = playerId?.trim() || null;
+
+    let targetRoomCode = inMemoryRoomCode;
+    let targetSessionToken = inMemoryToken;
+    let fallbackPlayerId: string | null = inMemoryPlayerId;
+
+    if (!targetRoomCode || !targetSessionToken) {
+      const urlRoomCode = readRoomCodeFromUrl();
+      if (!urlRoomCode) {
+        return;
+      }
+
+      const storedSession = readStoredSession(urlRoomCode);
+      if (!storedSession?.sessionToken) {
+        return;
+      }
+
+      targetRoomCode = urlRoomCode;
+      targetSessionToken = storedSession.sessionToken;
+      fallbackPlayerId = storedSession.playerId;
+    }
+
+    if (!targetRoomCode || !targetSessionToken) {
       return;
     }
 
-    const attemptId = `${socket.id}:${candidateRoomCode}:${stored.sessionToken}`;
-    if (autoRejoinAttempted.current.has(attemptId)) {
+    const finalRoomCode = targetRoomCode;
+    const finalSessionToken = targetSessionToken;
+    const currentSessionKey = `${finalRoomCode}:${finalSessionToken}`;
+    const currentBoundSocketId = lastBoundSocketIdRef.current;
+    if (
+      currentBoundSocketId === socket.id &&
+      inMemoryRoomCode === finalRoomCode &&
+      inMemoryToken === finalSessionToken
+    ) {
       return;
     }
 
-    autoRejoinAttempted.current.add(attemptId);
+    const bindAttemptKey = `${socket.id}:${currentSessionKey}`;
+    if (attemptedBindKeysRef.current.has(bindAttemptKey)) {
+      return;
+    }
+
+    attemptedBindKeysRef.current.add(bindAttemptKey);
+    rejoinInFlightRef.current = true;
     setIsRejoining(true);
 
-    rejoinRoomV2(socket, candidateRoomCode, stored.sessionToken)
+    console.log(
+      `[multiplayer] Attempting to bind session for room ${finalRoomCode} on socket ${socket.id}`
+    );
+
+    rejoinRoomV2(socket, finalRoomCode, finalSessionToken)
       .then(response => {
+        const resolvedRoomCode = (response.roomCode || finalRoomCode || '').toUpperCase();
+        if (!resolvedRoomCode) {
+          throw new Error('Server did not return room identity.');
+        }
+        const resolvedPlayerId = response.playerId || fallbackPlayerId || null;
+        const resolvedPlayerName = resolvedPlayerId
+          ? response.players?.find(player => player.id === resolvedPlayerId)?.name || readNameFromUrl()
+          : readNameFromUrl();
+
         setIsOnlineMode(true);
         setRoomId(response.roomId || null);
-        setRoomCode(response.roomCode || candidateRoomCode);
-        setPlayerId(response.playerId || stored.playerId);
-        setSessionToken(stored.sessionToken);
+        setRoomCode(resolvedRoomCode);
+        setPlayerId(resolvedPlayerId);
+        setSessionToken(finalSessionToken);
         setPlayers(response.players || []);
+        setPlayersPresence({});
         setHostPlayerId(response.players?.[0]?.id || null);
         setIsHost(Boolean(response.isHost));
         setIsGameStarted(Boolean(response.isGameStarted));
         setStateVersion(response.stateVersion || 0);
-        writeStoredSession(candidateRoomCode, stored.sessionToken, response.playerId || stored.playerId);
+        setError(null);
+        if (resolvedPlayerId) {
+          writeStoredSession(resolvedRoomCode, finalSessionToken, resolvedPlayerId);
+        }
+        replaceRoomUrl(resolvedRoomCode, resolvedPlayerName);
+        lastBoundSocketIdRef.current = socket.id;
+        console.log(
+          `[multiplayer] Session bound for room ${resolvedRoomCode} on socket ${socket.id}`
+        );
       })
       .catch((rejoinError: Error) => {
-        console.warn('Auto rejoin failed:', rejoinError.message);
-        setError(rejoinError.message || 'Session expired; rejoin only if lobby not started.');
+        const rawMessage = rejoinError.message || 'Unable to reclaim your seat.';
+        console.warn('[multiplayer] Session bind failed:', rawMessage);
+
+        if (isTerminalRejoinError(rawMessage)) {
+          clearStoredSession(finalRoomCode);
+          if (inMemoryRoomCode === finalRoomCode && inMemoryToken === finalSessionToken) {
+            setSessionToken(null);
+            setPlayerId(null);
+            setPlayers([]);
+            setPlayersPresence({});
+            setIsHost(false);
+            setHostPlayerId(null);
+            setIsGameStarted(false);
+            setStateVersion(0);
+          }
+        }
+
+        setError(getRejoinErrorMessage(rawMessage));
       })
       .finally(() => {
+        rejoinInFlightRef.current = false;
         setIsRejoining(false);
       });
-  }, [socket, isConnected, roomCode, sessionToken]);
+  }, [socket, isConnected, roomCode, sessionToken, playerId]);
 
   const createRoom = async (playerName: string): Promise<void> => {
     if (!socket) {
@@ -482,6 +618,8 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
       setStateVersion(response.stateVersion || 1);
       setError(null);
       writeStoredSession(response.roomCode, response.sessionToken, response.playerId);
+      replaceRoomUrl(response.roomCode, playerName);
+      lastBoundSocketIdRef.current = socket.id || null;
       return;
     }
 
@@ -540,6 +678,8 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
       setStateVersion(response.stateVersion || 1);
       setError(null);
       writeStoredSession(response.roomCode, response.sessionToken, response.playerId);
+      replaceRoomUrl(response.roomCode, playerName);
+      lastBoundSocketIdRef.current = socket.id || null;
       return;
     }
 
@@ -717,6 +857,9 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
     }
 
     clearStoredSession(roomCode);
+    lastBoundSocketIdRef.current = null;
+    attemptedBindKeysRef.current.clear();
+    rejoinInFlightRef.current = false;
     setIsOnlineMode(false);
     setRoomId(null);
     setRoomCode(null);

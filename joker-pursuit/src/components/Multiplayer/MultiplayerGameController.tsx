@@ -25,6 +25,7 @@ const PLAYER_COLOR_NAME_BY_VALUE = PLAYER_COLORS.reduce((acc, color) => {
   acc[color.value] = color.name;
   return acc;
 }, {} as Record<string, string>);
+const SNAPSHOT_HYDRATION_RETRY_DELAYS_MS = [0, 1000, 3000];
 
 const normalizeGameStateForClient = (state: GameState): GameState => {
   if (!state?.board?.allSpaces || state.board.allSpaces instanceof Map) {
@@ -272,6 +273,9 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     sessionToken,
     players,
     playersPresence,
+    isGameStarted,
+    isRejoining,
+    error,
     stateVersion,
     updatePlayerColor,
     submitAction,
@@ -289,8 +293,12 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const [recentMoveHighlight, setRecentMoveHighlight] = useState<RecentMoveHighlight | undefined>(undefined);
   const [appliedSnapshotVersion, setAppliedSnapshotVersion] = useState<number>(0);
   const [presenceNow, setPresenceNow] = useState<number>(() => Date.now());
+  const [hydrationAttemptCount, setHydrationAttemptCount] = useState(0);
+  const [snapshotHydrationFailed, setSnapshotHydrationFailed] = useState(false);
+  const [returnLinkCopyStatus, setReturnLinkCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const latestSnapshotVersionRef = useRef<number>(0);
   const gameStateRef = useRef<GameState | null>(null);
+  const isWaitingForStartedGameSnapshot = isOnlineMode && isGameStarted && !gameState;
   const getCurrentBaseVersion = useCallback((): number => {
     return Math.max(latestSnapshotVersionRef.current, stateVersion, appliedSnapshotVersion);
   }, [stateVersion, appliedSnapshotVersion]);
@@ -454,6 +462,62 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       socket.off('game-state-updated', onLegacyGameStateUpdate);
     };
   }, [isOnlineMode, playerId, requestSync, roomCode, socket]);
+
+  useEffect(() => {
+    if (!isWaitingForStartedGameSnapshot) {
+      setHydrationAttemptCount(0);
+      setSnapshotHydrationFailed(false);
+      return;
+    }
+
+    let isCancelled = false;
+    const timers: number[] = [];
+    setSnapshotHydrationFailed(false);
+    setHydrationAttemptCount(0);
+
+    SNAPSHOT_HYDRATION_RETRY_DELAYS_MS.forEach((delayMs, attemptIndex) => {
+      const timer = window.setTimeout(() => {
+        if (isCancelled || gameStateRef.current) {
+          return;
+        }
+
+        const attemptNumber = attemptIndex + 1;
+        setHydrationAttemptCount(attemptNumber);
+        console.log(
+          `[multiplayer] Requesting room snapshot sync (${attemptNumber}/${SNAPSHOT_HYDRATION_RETRY_DELAYS_MS.length})`
+        );
+
+        requestSync()
+          .catch((syncError: Error) => {
+            if (isCancelled || gameStateRef.current) {
+              return;
+            }
+
+            console.warn(
+              `[multiplayer] Snapshot sync attempt ${attemptNumber} failed: ${syncError.message}`
+            );
+            if (attemptNumber === SNAPSHOT_HYDRATION_RETRY_DELAYS_MS.length) {
+              setSnapshotHydrationFailed(true);
+            }
+          });
+      }, delayMs);
+
+      timers.push(timer);
+    });
+
+    const hydrationDeadlineMs = SNAPSHOT_HYDRATION_RETRY_DELAYS_MS[SNAPSHOT_HYDRATION_RETRY_DELAYS_MS.length - 1] + 1200;
+    const deadlineTimer = window.setTimeout(() => {
+      if (!isCancelled && !gameStateRef.current) {
+        setSnapshotHydrationFailed(true);
+      }
+    }, hydrationDeadlineMs);
+    timers.push(deadlineTimer);
+
+    return () => {
+      isCancelled = true;
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [isWaitingForStartedGameSnapshot, requestSync]);
 
   // Handle player making a move
   const handleMove = async (moveData: any) => {
@@ -660,6 +724,25 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     onBack();
   };
 
+  const handleCopyReturnLink = useCallback(async () => {
+    if (!roomCode) {
+      return;
+    }
+
+    const fallbackName = players.find(player => player.id === playerId)?.name
+      || gameState?.players.find(player => player.id === playerId)?.name
+      || '';
+    const returnLink = `${window.location.origin}/?room=${encodeURIComponent(roomCode)}${fallbackName ? `&name=${encodeURIComponent(fallbackName)}` : ''}`;
+
+    try {
+      await navigator.clipboard.writeText(returnLink);
+      setReturnLinkCopyStatus('copied');
+    } catch (copyError) {
+      console.error('Failed to copy return link', copyError);
+      setReturnLinkCopyStatus('failed');
+    }
+  }, [roomCode, players, playerId, gameState]);
+
   const memoizedPlayerNames = useMemo(
     () => gameState?.players.map(player => player.name) || [],
     [gameState]
@@ -721,6 +804,56 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     }
 
     return 'disconnected';
+  };
+
+  const renderStartedGameReconnect = () => {
+    const attemptText = hydrationAttemptCount > 0
+      ? `Sync attempt ${hydrationAttemptCount}/${SNAPSHOT_HYDRATION_RETRY_DELAYS_MS.length}`
+      : 'Preparing to sync your game state...';
+
+    return (
+      <div className="loading-screen">
+        <h2>Reconnecting to your seat...</h2>
+        <div className="loading-spinner"></div>
+        <p>
+          {isRejoining
+            ? 'Reconnecting to your seat...'
+            : 'Syncing the latest match snapshot from the server...'}
+        </p>
+        <p className="helper-text">{attemptText}</p>
+        {snapshotHydrationFailed && (
+          <>
+            <p className="helper-text">
+              {error || 'Unable to sync game state. You can retry sync or leave and rejoin.'}
+            </p>
+            <div className="button-group">
+              <button
+                type="button"
+                className="skeuomorphic-button secondary-button"
+                onClick={() => {
+                  setSnapshotHydrationFailed(false);
+                  requestSync().catch((syncError: Error) => {
+                    console.error('Failed to sync after hydration retries', syncError);
+                    setSnapshotHydrationFailed(true);
+                  });
+                }}
+              >
+                <span className="button-text">Sync now</span>
+                <div className="button-shine"></div>
+              </button>
+              <button
+                type="button"
+                className="skeuomorphic-button secondary-button leave-action-button"
+                onClick={handleLeaveGame}
+              >
+                <span className="button-text">Leave Game</span>
+                <div className="button-shine"></div>
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    );
   };
 
   // Render color selection screen
@@ -905,6 +1038,10 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
 
   // Render the appropriate content based on game phase
   const renderGameContent = () => {
+    if (isWaitingForStartedGameSnapshot) {
+      return renderStartedGameReconnect();
+    }
+
     if (gamePhase === 'colorSelection') {
       return renderColorSelection();
     }
@@ -962,6 +1099,14 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
                 <button
                   type="button"
                   className="skeuomorphic-button secondary-button header-action-button"
+                  onClick={handleCopyReturnLink}
+                >
+                  <span className="button-text">Copy My Return Link</span>
+                  <div className="button-shine"></div>
+                </button>
+                <button
+                  type="button"
+                  className="skeuomorphic-button secondary-button header-action-button"
                   onClick={() => {
                     requestSync().catch((error: Error) => {
                       console.error('Failed to sync during match', error);
@@ -981,6 +1126,12 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
                 </button>
               </div>
             </div>
+            {returnLinkCopyStatus === 'copied' && (
+              <p className="helper-text">Return link copied to clipboard.</p>
+            )}
+            {returnLinkCopyStatus === 'failed' && (
+              <p className="helper-text">Could not copy automatically. Please copy the URL manually.</p>
+            )}
             <ul className="game-player-list">
               {gameState.players.map((player, index) => {
                 const isSelf = player.id === playerId;

@@ -39,6 +39,10 @@ const mockMultiplayerState = (overrides: Record<string, unknown> = {}) => {
 };
 
 describe('JoinGameRoom', () => {
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/');
+  });
+
   afterEach(() => {
     jest.clearAllMocks();
   });
@@ -81,5 +85,19 @@ describe('JoinGameRoom', () => {
     expect(screen.getByText('You')).toBeInTheDocument();
     expect(screen.getByText('Host')).toBeInTheDocument();
     expect(screen.getAllByText('Connected').length).toBeGreaterThan(0);
+  });
+
+  test('prefills player name from URL query parameter', () => {
+    window.history.replaceState({}, '', '/?room=ABC123&name=Player%20One');
+    mockMultiplayerState({
+      roomCode: null,
+      sessionToken: null,
+      playerId: null,
+      players: []
+    });
+
+    render(<JoinGameRoom onBack={jest.fn()} initialRoomCode="ABC123" />);
+
+    expect(screen.getByTestId('join-room-player-name')).toHaveValue('Player One');
   });
 });

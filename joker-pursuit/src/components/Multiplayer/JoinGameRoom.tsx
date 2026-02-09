@@ -8,10 +8,20 @@ interface JoinGameRoomProps {
   initialRoomCode?: string | null;
 }
 
+const readInitialPlayerName = (): string => {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  const rawName = new URLSearchParams(window.location.search).get('name');
+  return rawName?.trim() || '';
+};
+
 const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) => {
-  const [playerName, setPlayerName] = useState('');
+  const [playerName, setPlayerName] = useState(() => readInitialPlayerName());
   const [roomCode, setRoomCode] = useState(initialRoomCode?.toUpperCase() || '');
   const [isJoining, setIsJoining] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const { 
     joinRoom, 
     roomCode: connectedRoomCode, 
@@ -87,6 +97,27 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
     return 'disconnected';
   };
 
+  const handleCopyReturnLink = async () => {
+    if (!connectedRoomCode) {
+      return;
+    }
+
+    const url = new URL(window.location.origin);
+    url.searchParams.set('room', connectedRoomCode);
+    const normalizedName = playerName.trim();
+    if (normalizedName) {
+      url.searchParams.set('name', normalizedName);
+    }
+
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      setCopyStatus('copied');
+    } catch (copyError) {
+      console.error('Failed to copy return link', copyError);
+      setCopyStatus('failed');
+    }
+  };
+
   return (
     <div className="multiplayer-shell">
       <div className="multiplayer-container join-room">
@@ -97,7 +128,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
         {!hasJoinedRoom ? (
           <form onSubmit={handleJoinRoom} className="multiplayer-form">
             {isRejoining && (
-              <p className="helper-text">Attempting to reclaim your previous seat...</p>
+              <p className="helper-text">Reconnecting to your seat...</p>
             )}
             <div className="form-group">
               <label htmlFor="playerName">Your Name:</label>
@@ -163,6 +194,21 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
             <div className="room-code-display">
               <h3>Room Code</h3>
               <div className="code-box" data-testid="join-room-code">{connectedRoomCode}</div>
+              <button
+                type="button"
+                onClick={handleCopyReturnLink}
+                className="skeuomorphic-button secondary-button"
+                data-testid="join-room-copy-return-link"
+              >
+                <span className="button-text">Copy My Return Link</span>
+                <div className="button-shine"></div>
+              </button>
+              {copyStatus === 'copied' && (
+                <p className="helper-text">Return link copied to clipboard.</p>
+              )}
+              {copyStatus === 'failed' && (
+                <p className="helper-text">Could not copy automatically. Please copy the URL manually.</p>
+              )}
             </div>
 
             <div className="waiting-player-list">
