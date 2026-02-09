@@ -353,9 +353,11 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
         return;
       }
 
+      // Accept equal-version snapshots so request-sync/action-rejected payloads can
+      // realign optimistic local state even when the server version has not changed.
       if (
         typeof incomingVersion === 'number' &&
-        incomingVersion <= latestSnapshotVersionRef.current
+        incomingVersion < latestSnapshotVersionRef.current
       ) {
         return;
       }

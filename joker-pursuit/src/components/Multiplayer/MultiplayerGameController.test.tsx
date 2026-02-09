@@ -52,7 +52,7 @@ const makePlayer = (id: string, name: string, color: string, teamId: number) => 
   teamId
 });
 
-const createSerializableGameState = (): GameState => {
+const createSerializableGameState = (currentPlayerIndex = 0): GameState => {
   const players = [
     makePlayer('player-1', 'Host', '#FF5733', 0),
     makePlayer('player-2', 'Guest', '#33A1FF', 1)
@@ -71,7 +71,7 @@ const createSerializableGameState = (): GameState => {
     id: 'game-state-test',
     phase: 'playing',
     players,
-    currentPlayerIndex: 0,
+    currentPlayerIndex,
     board: {
       ...board,
       allSpaces: Object.fromEntries(board.allSpaces)
@@ -165,5 +165,33 @@ describe('MultiplayerGameController', () => {
 
     expect(redButton).not.toBeDisabled();
     expect(blueButton).toBeDisabled();
+  });
+
+  test('applies equal-version snapshots so sync can recover optimistic drift', () => {
+    const socket = mockMultiplayerState({
+      playerId: 'player-1'
+    });
+
+    render(<MultiplayerGameController onBack={jest.fn()} />);
+
+    act(() => {
+      socket.emitEvent('room-snapshot-v2', {
+        roomCode: 'ABCD12',
+        stateVersion: 2,
+        gameState: createSerializableGameState(0)
+      });
+    });
+
+    expect(screen.getByText("It's your turn!")).toBeInTheDocument();
+
+    act(() => {
+      socket.emitEvent('room-snapshot-v2', {
+        roomCode: 'ABCD12',
+        stateVersion: 2,
+        gameState: createSerializableGameState(1)
+      });
+    });
+
+    expect(screen.getByText('Waiting for Guest')).toBeInTheDocument();
   });
 });
