@@ -16,8 +16,10 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
     joinRoom, 
     roomCode: connectedRoomCode, 
     playerId,
+    hostPlayerId,
     sessionToken,
     players, 
+    playersPresence,
     isRejoining,
     error, 
     clearError 
@@ -53,6 +55,36 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
     } finally {
       setIsJoining(false);
     }
+  };
+
+  const resolvedHostPlayerId = hostPlayerId || players[0]?.id || null;
+
+  const getPresenceLabel = (targetPlayerId: string): string => {
+    const presence = playersPresence[targetPlayerId];
+    if (!presence) {
+      return 'Unknown';
+    }
+    if (presence.status === 'connected') {
+      return 'Connected';
+    }
+    if (presence.status === 'reconnecting') {
+      return 'Reconnecting';
+    }
+    return 'Disconnected';
+  };
+
+  const getPresenceTone = (targetPlayerId: string): string => {
+    const presence = playersPresence[targetPlayerId];
+    if (!presence) {
+      return 'unknown';
+    }
+    if (presence.status === 'connected') {
+      return 'connected';
+    }
+    if (presence.status === 'reconnecting') {
+      return 'reconnecting';
+    }
+    return 'disconnected';
   };
 
   return (
@@ -136,12 +168,23 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
             <div className="waiting-player-list">
               <h3>Players ({players.length}/8)</h3>
               <ul>
-                {players.map(player => (
-                  <li key={player.id}>
-                    <span>{player.name}</span>
-                    {player.id === players[0].id && <span className="host-badge">Host</span>}
-                  </li>
-                ))}
+                {players.map(player => {
+                  const isSelf = player.id === playerId;
+                  const isHostPlayer = player.id === resolvedHostPlayerId;
+                  const presenceTone = getPresenceTone(player.id);
+                  const presenceLabel = getPresenceLabel(player.id);
+
+                  return (
+                    <li key={player.id}>
+                      <span className="waiting-player-name">{player.name}</span>
+                      <span className="waiting-player-badges">
+                        {isSelf && <span className="player-badge role-you">You</span>}
+                        {isHostPlayer && <span className="player-badge role-host">Host</span>}
+                        <span className={`player-badge presence-${presenceTone}`}>{presenceLabel}</span>
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
 

@@ -61,6 +61,7 @@ interface UpdateColorResponseV1 {
 interface MultiplayerContextType {
   isOnlineMode: boolean;
   isHost: boolean;
+  hostPlayerId: string | null;
   roomId: string | null;
   roomCode: string | null;
   playerId: string | null;
@@ -178,6 +179,7 @@ const getRoomCodeFromQueryString = (): string | null => {
 const MultiplayerContext = createContext<MultiplayerContextType>({
   isOnlineMode: false,
   isHost: false,
+  hostPlayerId: null,
   roomId: null,
   roomCode: null,
   playerId: null,
@@ -215,6 +217,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
   const [players, setPlayers] = useState<MultiplayerPlayer[]>([]);
   const [playersPresence, setPlayersPresence] = useState<Record<string, PlayerPresence>>({});
   const [isHost, setIsHost] = useState(false);
+  const [hostPlayerId, setHostPlayerId] = useState<string | null>(null);
   const [isGameStarted, setIsGameStarted] = useState(false);
   const [isRejoining, setIsRejoining] = useState(false);
   const [stateVersion, setStateVersion] = useState(0);
@@ -260,6 +263,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
     }) => {
       if (!roomCode || data.roomCode.toUpperCase() === roomCode.toUpperCase()) {
         setPlayers(data.players || []);
+        setHostPlayerId(data.hostPlayerId || data.players?.[0]?.id || null);
         if (data.hostPlayerId && playerId) {
           setIsHost(data.hostPlayerId === playerId);
         }
@@ -274,6 +278,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
       if (!roomCode || data.roomCode.toUpperCase() === roomCode.toUpperCase()) {
         setIsGameStarted(true);
         setPlayers(data.players || []);
+        setHostPlayerId(data.hostPlayerId || data.players?.[0]?.id || null);
         if (data.hostPlayerId && playerId) {
           setIsHost(data.hostPlayerId === playerId);
         }
@@ -298,6 +303,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
         setPlayers(snapshot.players || []);
         setPlayersPresence(snapshot.playersPresence || {});
         setIsGameStarted(Boolean(snapshot.isStarted || snapshot.gameState));
+        setHostPlayerId(snapshot.hostPlayerId || snapshot.players?.[0]?.id || null);
         if (snapshot.hostPlayerId) {
           const selfId = snapshot.selfPlayerId || playerId;
           if (selfId) {
@@ -312,6 +318,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
 
     const onHostUpdated = (data: { roomCode: string; hostPlayerId: string }) => {
       if (!roomCode || data.roomCode.toUpperCase() === roomCode.toUpperCase()) {
+        setHostPlayerId(data.hostPlayerId);
         if (playerId) {
           setIsHost(data.hostPlayerId === playerId);
         }
@@ -349,13 +356,16 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
 
     const onPlayerJoined = (data: { players: MultiplayerPlayer[] }) => {
       setPlayers(data.players);
+      setHostPlayerId(data.players?.[0]?.id || null);
     };
 
     const onPlayerLeft = (data: { players: MultiplayerPlayer[] }) => {
       setPlayers(data.players);
+      setHostPlayerId(data.players?.[0]?.id || null);
     };
 
     const onNewHost = (data: { newHostId: string }) => {
+      setHostPlayerId(data.newHostId);
       if (playerId === data.newHostId) {
         setIsHost(true);
       }
@@ -364,6 +374,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
     const onGameStarted = (data: { players: MultiplayerPlayer[] }) => {
       setIsGameStarted(true);
       setPlayers(data.players);
+      setHostPlayerId(data.players?.[0]?.id || null);
     };
 
     const onPlayerColorUpdated = (data: { playerId: string; color: string }) => {
@@ -423,6 +434,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
         setPlayerId(response.playerId || stored.playerId);
         setSessionToken(stored.sessionToken);
         setPlayers(response.players || []);
+        setHostPlayerId(response.players?.[0]?.id || null);
         setIsHost(Boolean(response.isHost));
         setIsGameStarted(Boolean(response.isGameStarted));
         setStateVersion(response.stateVersion || 0);
@@ -465,6 +477,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
       setPlayers(response.players || []);
       setPlayersPresence({});
       setIsHost(true);
+      setHostPlayerId(response.playerId);
       setIsGameStarted(false);
       setStateVersion(response.stateVersion || 1);
       setError(null);
@@ -480,6 +493,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
           setPlayerId(response.playerId || null);
           setSessionToken(null);
           setIsHost(true);
+          setHostPlayerId(response.playerId || null);
           setPlayers(response.players || []);
           setError(null);
           resolve();
@@ -521,6 +535,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
       setPlayers(response.players || []);
       setPlayersPresence({});
       setIsHost(Boolean(response.isHost));
+      setHostPlayerId(response.players?.[0]?.id || null);
       setIsGameStarted(false);
       setStateVersion(response.stateVersion || 1);
       setError(null);
@@ -536,6 +551,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
           setPlayerId(response.playerId || null);
           setSessionToken(null);
           setIsHost(false);
+          setHostPlayerId(response.players?.[0]?.id || null);
           setPlayers(response.players || []);
           setError(null);
           resolve();
@@ -709,6 +725,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
     setPlayers([]);
     setPlayersPresence({});
     setIsHost(false);
+    setHostPlayerId(null);
     setIsGameStarted(false);
     setIsRejoining(false);
     setStateVersion(0);
@@ -718,6 +735,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
   const contextValue: MultiplayerContextType = {
     isOnlineMode,
     isHost,
+    hostPlayerId,
     roomId,
     roomCode,
     playerId,

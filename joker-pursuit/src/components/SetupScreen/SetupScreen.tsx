@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createFloatingDecorElements, FloatingDecorElement } from '../../utils/floatingDecor';
 import './SetupScreen.css';
 
 interface SetupScreenProps {
@@ -14,16 +15,6 @@ interface SetupScreenProps {
   onToggleTeamMode: () => void;
   onStartGame: () => void;
   onBack: () => void;
-}
-
-interface FloatingElement {
-  id: number;
-  type: 'card' | 'peg';
-  color: string;
-  x: number;
-  y: number;
-  rotation: number;
-  scale: number;
 }
 
 const PLAYER_COLORS = [
@@ -51,40 +42,13 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
   onStartGame,
   onBack
 }) => {
-  const [floatingElements, setFloatingElements] = useState<FloatingElement[]>([]);
+  const [floatingElements, setFloatingElements] = useState<FloatingDecorElement[]>([]);
 
   // Check if teams can be used (when player count is even: 2, 4, 6, 8)
   const canUseTeams = playerNames.length % 2 === 0;
 
   useEffect(() => {
-    // Create initial floating elements
-    const elements: FloatingElement[] = [];
-    // Add 10 cards
-    for (let i = 0; i < 10; i++) {
-      elements.push({
-        id: i,
-        type: 'card',
-        color: '#ffffff',
-        x: Math.random() * 100,
-        y: Math.random() * 100,
-        rotation: Math.random() * 360,
-        scale: 0.5 + Math.random() * 0.5
-      });
-    }
-    // Add 8 pegs with different colors
-    const pegColors = ['#FF5733', '#33A1FF', '#33FF57', '#F033FF', '#FFFF33', '#FF33A8', '#33FFEC', '#FF8C33'];
-    for (let i = 0; i < 8; i++) {
-      elements.push({
-        id: i + 10,
-        type: 'peg',
-        color: pegColors[i],
-        x: Math.random() * 100,
-        y: Math.random() * 100,
-        rotation: Math.random() * 360,
-        scale: 0.5 + Math.random() * 0.5
-      });
-    }
-    setFloatingElements(elements);
+    setFloatingElements(createFloatingDecorElements());
   }, []);
 
   return (
@@ -97,9 +61,14 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
           style={{
             left: `${element.x}%`,
             top: `${element.y}%`,
-            transform: `rotate(${element.rotation}deg) scale(${element.scale})`,
-            backgroundColor: element.type === 'peg' ? element.color : undefined
-          }}
+            backgroundColor: element.type === 'peg' ? element.color : undefined,
+            '--float-rotation': `${element.rotation}deg`,
+            '--float-scale': `${element.scale}`,
+            '--float-drift-x': `${element.driftX}px`,
+            '--float-drift-y': `${element.driftY}px`,
+            '--float-duration': `${element.duration}s`,
+            '--float-delay': `${element.delay}s`
+          } as React.CSSProperties}
         />
       ))}
 

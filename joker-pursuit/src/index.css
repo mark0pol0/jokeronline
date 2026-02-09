@@ -10,6 +10,11 @@
   --surface: rgba(255, 255, 255, 0.78);
   --surface-strong: rgba(255, 255, 255, 0.92);
   --surface-border: rgba(255, 255, 255, 0.65);
+  --surface-dark: rgba(13, 24, 35, 0.62);
+  --surface-dark-strong: rgba(9, 19, 29, 0.82);
+  --surface-dark-border: rgba(199, 224, 244, 0.22);
+  --ink-on-dark: #e9f5ff;
+  --ink-on-dark-muted: #b8cfde;
 
   --brand: #0f6b74;
   --brand-strong: #0b535a;

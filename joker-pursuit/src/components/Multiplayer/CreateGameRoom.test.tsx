@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import JoinGameRoom from './JoinGameRoom';
+import CreateGameRoom from './CreateGameRoom';
 import { useMultiplayer } from '../../context/MultiplayerContext';
 
 jest.mock('../../context/MultiplayerContext', () => ({
@@ -12,7 +12,7 @@ const mockedUseMultiplayer = useMultiplayer as jest.MockedFunction<typeof useMul
 const mockMultiplayerState = (overrides: Record<string, unknown> = {}) => {
   mockedUseMultiplayer.mockReturnValue({
     isOnlineMode: true,
-    isHost: false,
+    isHost: true,
     hostPlayerId: null,
     roomId: null,
     roomCode: null,
@@ -38,48 +38,41 @@ const mockMultiplayerState = (overrides: Record<string, unknown> = {}) => {
   } as any);
 };
 
-describe('JoinGameRoom', () => {
+describe('CreateGameRoom', () => {
   afterEach(() => {
     jest.clearAllMocks();
   });
 
-  test('shows join form for invite links when room state is stale', () => {
-    mockMultiplayerState({
-      roomCode: 'ABC123',
-      sessionToken: null,
-      playerId: null,
-      players: [{ id: 'host-1', name: 'Host Player', color: '' }]
-    });
+  test('shows create room form before room creation', () => {
+    mockMultiplayerState();
 
-    render(<JoinGameRoom onBack={jest.fn()} initialRoomCode="ABC123" />);
+    render(<CreateGameRoom onBack={jest.fn()} />);
 
-    expect(screen.getByTestId('join-room-player-name')).toBeInTheDocument();
-    expect(screen.getByTestId('join-room-code-input')).toHaveValue('ABC123');
-    expect(screen.queryByTestId('join-room-code')).not.toBeInTheDocument();
+    expect(screen.getByTestId('create-room-player-name')).toBeInTheDocument();
+    expect(screen.queryByTestId('create-room-code')).not.toBeInTheDocument();
   });
 
-  test('shows waiting room only after the current player is in the roster', () => {
+  test('shows waiting room roster with host and presence badges', () => {
     mockMultiplayerState({
       roomCode: 'ABC123',
-      sessionToken: 'session-token',
-      playerId: 'player-2',
+      playerId: 'host-1',
       hostPlayerId: 'host-1',
       playersPresence: {
         'host-1': { playerId: 'host-1', status: 'connected', connected: true },
-        'player-2': { playerId: 'player-2', status: 'connected', connected: true }
+        'guest-1': { playerId: 'guest-1', status: 'reconnecting', connected: false }
       },
       players: [
-        { id: 'host-1', name: 'Host Player', color: '' },
-        { id: 'player-2', name: 'Guest', color: '' }
+        { id: 'host-1', name: 'Host Player', color: '#FF5733' },
+        { id: 'guest-1', name: 'Guest Player', color: '#33A1FF' }
       ]
     });
 
-    render(<JoinGameRoom onBack={jest.fn()} initialRoomCode="ABC123" />);
+    render(<CreateGameRoom onBack={jest.fn()} />);
 
-    expect(screen.queryByTestId('join-room-player-name')).not.toBeInTheDocument();
-    expect(screen.getByTestId('join-room-code')).toHaveTextContent('ABC123');
+    expect(screen.getByTestId('create-room-code')).toHaveTextContent('ABC123');
     expect(screen.getByText('You')).toBeInTheDocument();
     expect(screen.getByText('Host')).toBeInTheDocument();
-    expect(screen.getAllByText('Connected').length).toBeGreaterThan(0);
+    expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(screen.getByText('Reconnecting')).toBeInTheDocument();
   });
 });

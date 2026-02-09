@@ -10,6 +10,22 @@ interface MultiplayerGameControllerProps {
   onBack: () => void;
 }
 
+const PLAYER_COLORS = [
+  { name: 'Red', value: '#FF5733' },
+  { name: 'Blue', value: '#33A1FF' },
+  { name: 'Green', value: '#33FF57' },
+  { name: 'Purple', value: '#F033FF' },
+  { name: 'Yellow', value: '#FFFF33' },
+  { name: 'Pink', value: '#FF33A8' },
+  { name: 'Cyan', value: '#33FFEC' },
+  { name: 'Orange', value: '#FF8C33' }
+];
+
+const PLAYER_COLOR_NAME_BY_VALUE = PLAYER_COLORS.reduce((acc, color) => {
+  acc[color.value] = color.name;
+  return acc;
+}, {} as Record<string, string>);
+
 const normalizeGameStateForClient = (state: GameState): GameState => {
   if (!state?.board?.allSpaces || state.board.allSpaces instanceof Map) {
     return state;
@@ -250,6 +266,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const { 
     isOnlineMode,
     isHost,
+    hostPlayerId,
     roomCode,
     playerId,
     sessionToken,
@@ -660,6 +677,11 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     [gameState]
   );
 
+  const resolvedHostPlayerId = useMemo(
+    () => hostPlayerId || players[0]?.id || null,
+    [hostPlayerId, players]
+  );
+
   const getPresenceLabel = (targetPlayerId: string): string => {
     const presence = playersPresence[targetPlayerId];
     if (!presence) {
@@ -682,106 +704,146 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     return 'Disconnected';
   };
 
+  const getPresenceTone = (targetPlayerId: string): 'connected' | 'reconnecting' | 'disconnected' | 'unknown' => {
+    const presence = playersPresence[targetPlayerId];
+    if (!presence) {
+      return 'unknown';
+    }
+
+    if (presence.status === 'connected') {
+      return 'connected';
+    }
+
+    if (presence.status === 'reconnecting') {
+      return 'reconnecting';
+    }
+
+    return 'disconnected';
+  };
+
   // Render color selection screen
   const renderColorSelection = () => {
-    const PLAYER_COLORS = [
-      { name: 'Red', value: '#FF5733' },
-      { name: 'Blue', value: '#33A1FF' },
-      { name: 'Green', value: '#33FF57' },
-      { name: 'Purple', value: '#F033FF' },
-      { name: 'Yellow', value: '#FFFF33' },
-      { name: 'Pink', value: '#FF33A8' },
-      { name: 'Cyan', value: '#33FFEC' },
-      { name: 'Orange', value: '#FF8C33' }
-    ];
-
-    // Filter out colors that are already selected by other players
-    const availableColors = PLAYER_COLORS.filter(
-      color => !Object.values(selectedColors).includes(color.value) || 
-               (playerId && selectedColors[playerId] === color.value)
-    );
-
-    // Check if all players have selected a color
+    const localPlayerId = playerId || null;
     const allPlayersHaveColors = players.every(
       (player: MultiplayerPlayer) => selectedColors[player.id]
     );
 
-    // Check if the current player has selected a color
-    const hasSelectedColor = playerId && selectedColors[playerId];
+    const hasSelectedColor = Boolean(localPlayerId && selectedColors[localPlayerId]);
+    const selectedColorValue = localPlayerId ? selectedColors[localPlayerId] : undefined;
+    const selectedColorName = selectedColorValue
+      ? PLAYER_COLOR_NAME_BY_VALUE[selectedColorValue] || selectedColorValue
+      : null;
 
-    // Count how many players have selected colors
     const playersWithColors = players.filter(
       (player: MultiplayerPlayer) => selectedColors[player.id]
     ).length;
+
+    const colorOwners = players.reduce((acc, player) => {
+      const selected = selectedColors[player.id];
+      if (selected) {
+        acc[selected] = player.id;
+      }
+      return acc;
+    }, {} as Record<string, string>);
+
+    const getColorStateLabel = (colorValue: string): string | null => {
+      const ownerId = colorOwners[colorValue];
+      if (!ownerId || ownerId === localPlayerId) {
+        return null;
+      }
+
+      const owner = players.find(player => player.id === ownerId);
+      return owner ? `Taken by ${owner.name}` : 'Taken';
+    };
 
     return (
       <div className="color-selection-screen">
         <h2>Choose Your Color</h2>
         <p className="multiplayer-lead">Each player must pick a unique color before the game starts.</p>
-        
-        {/* Player color selection status */}
-        <div className="player-color-status">
-          <h3>Player Colors</h3>
-          <ul>
-            {players.map((player: MultiplayerPlayer) => (
-              <li key={player.id} className={`player-color-row ${player.id === playerId ? 'current-player' : ''}`}>
-                <span className="player-name">
-                  {player.name}
-                  {player.id === playerId && ' (You)'}
-                </span>
-                {selectedColors[player.id] ? (
-                  <span className="player-selection">
-                    <span
-                      className="player-color-indicator"
-                      style={{ backgroundColor: selectedColors[player.id] }}
-                    ></span>
-                    {PLAYER_COLORS.find(c => c.value === selectedColors[player.id])?.name}
-                  </span>
-                ) : (
-                  <span className="waiting-selection">selecting...</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-        
-        {/* Color selection */}
-        {!hasSelectedColor ? (
-          <>
-            <h3>Select your color</h3>
-            <div className="color-options">
-              {availableColors.map(color => (
-                <button
-                  key={color.name}
-                  className={`color-option ${playerId && selectedColors[playerId] === color.value ? 'selected' : ''}`}
-                  style={{ backgroundColor: color.value }}
-                  data-testid={`multiplayer-color-${color.name.toLowerCase()}`}
-                  onClick={() => handleColorSelect(color.value)}
-                >
-                  <span className="color-option-label">{color.name}</span>
-                </button>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="selected-color-message">
-            <p>You selected <span style={{ color: selectedColors[playerId] }}>{PLAYER_COLORS.find(c => c.value === selectedColors[playerId])?.name}</span></p>
+
+        <div className="color-selection-layout">
+          <div className="player-color-status">
+            <h3>Player Roster</h3>
+            <ul>
+              {players.map((player: MultiplayerPlayer) => {
+                const colorValue = selectedColors[player.id];
+                const isSelf = player.id === localPlayerId;
+                const isHostPlayer = player.id === resolvedHostPlayerId;
+                const colorName = colorValue ? (PLAYER_COLOR_NAME_BY_VALUE[colorValue] || colorValue) : null;
+
+                return (
+                  <li key={player.id} className={`player-color-row ${isSelf ? 'current-player' : ''}`}>
+                    <div className="player-color-meta">
+                      <span className="player-name">{player.name}</span>
+                      <div className="player-role-badges">
+                        {isSelf && <span className="inline-badge role-you">You</span>}
+                        {isHostPlayer && <span className="inline-badge role-host">Host</span>}
+                      </div>
+                    </div>
+                    {colorValue ? (
+                      <span className="player-selection">
+                        <span
+                          className="player-color-indicator"
+                          style={{ backgroundColor: colorValue }}
+                        ></span>
+                        {colorName}
+                      </span>
+                    ) : (
+                      <span className="waiting-selection">Selecting...</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
-        )}
-        
-        {/* Game status messaging */}
+
+          <div className="color-picker-panel">
+            <h3>{hasSelectedColor ? 'Adjust Your Color' : 'Select Your Color'}</h3>
+            <div className="color-options">
+              {PLAYER_COLORS.map(color => {
+                const ownerId = colorOwners[color.value];
+                const isTakenByOther = Boolean(ownerId && ownerId !== localPlayerId);
+                const isSelected = selectedColorValue === color.value;
+                const stateLabel = getColorStateLabel(color.value);
+
+                return (
+                  <button
+                    key={color.name}
+                    className={`color-option ${isSelected ? 'selected' : ''} ${isTakenByOther ? 'taken' : ''}`}
+                    style={{ backgroundColor: color.value }}
+                    data-testid={`multiplayer-color-${color.name.toLowerCase()}`}
+                    onClick={() => handleColorSelect(color.value)}
+                    disabled={!localPlayerId || isTakenByOther}
+                    title={stateLabel || color.name}
+                  >
+                    <span className="color-option-label">{color.name}</span>
+                    {isSelected && <span className="color-option-state">Selected</span>}
+                    {!isSelected && stateLabel && <span className="color-option-state">{stateLabel}</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {hasSelectedColor && selectedColorName && (
+              <div className="selected-color-message">
+                <p>
+                  You selected <span style={{ color: selectedColorValue }}>{selectedColorName}</span>
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="color-selection-status">
           <p>
-            {playersWithColors === players.length 
-              ? "All players have selected colors!" 
+            {playersWithColors === players.length
+              ? 'All players have selected colors!'
               : `Waiting for players to select colors... (${playersWithColors}/${players.length})`}
           </p>
         </div>
-        
-        {/* Start game button for host */}
+
         {isHost && (
           <div className="proceed-container">
-            <button 
+            <button
               className="skeuomorphic-button primary-button"
               onClick={handleProceedToGame}
               disabled={!allPlayersHaveColors}
@@ -795,8 +857,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
             )}
           </div>
         )}
-        
-        {/* Message for non-host players */}
+
         {!isHost && allPlayersHaveColors && (
           <p className="helper-text">All players have selected colors. Waiting for the host to start the game...</p>
         )}
@@ -872,6 +933,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       const turnPopupColor = isCurrentPlayerTurn ? localPlayerColor : activeTurnColor;
       const turnPopupTextColor = getReadableTextColor(turnPopupColor);
       const activeTurnPlayerName = currentTurnPlayer || currentPlayer?.name || 'opponent';
+      const inGameHostPlayerId = hostPlayerId || resolvedHostPlayerId || gameState.players[0]?.id || null;
 
       console.log('🎮 Rendering game with current player turn:', {
         currentPlayerIndex,
@@ -889,34 +951,61 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       return (
         <div className="multiplayer-game-container">
           <div className="game-header">
-            <div className="room-info">
-              <span className="room-code">Room: {roomCode}</span>
-              {isHost && <span className="host-badge">Host</span>}
-              <button
-                type="button"
-                className="skeuomorphic-button secondary-button"
-                onClick={() => {
-                  requestSync().catch((error: Error) => {
-                    console.error('Failed to sync during match', error);
-                  });
-                }}
-              >
-                <span className="button-text">Sync</span>
-                <div className="button-shine"></div>
-              </button>
+            <div className="game-header-main-row">
+              <div className="room-meta">
+                <span className="room-meta-label">Room</span>
+                <span className="room-code-chip">{roomCode}</span>
+              </div>
+              <div className="header-action-group">
+                <button
+                  type="button"
+                  className="skeuomorphic-button secondary-button header-action-button"
+                  onClick={() => {
+                    requestSync().catch((error: Error) => {
+                      console.error('Failed to sync during match', error);
+                    });
+                  }}
+                >
+                  <span className="button-text">Sync</span>
+                  <div className="button-shine"></div>
+                </button>
+                <button
+                  type="button"
+                  className="skeuomorphic-button secondary-button header-action-button leave-action-button"
+                  onClick={handleLeaveGame}
+                >
+                  <span className="button-text">Leave Game</span>
+                  <div className="button-shine"></div>
+                </button>
+              </div>
             </div>
             <ul className="game-player-list">
-              {gameState.players.map((player, index) => (
-                <li key={player.id} className={currentPlayerIndex === index ? 'current-player' : ''}>
-                  {player.name} 
-                  <span 
-                    className="selected-color" 
-                    style={{backgroundColor: player.color}}
-                  ></span>
-                  {currentPlayerIndex === index && ' (Current Turn)'}
-                  <span className="helper-text"> {getPresenceLabel(player.id)}</span>
-                </li>
-              ))}
+              {gameState.players.map((player, index) => {
+                const isSelf = player.id === playerId;
+                const isTurn = currentPlayerIndex === index;
+                const isHostPlayer = player.id === inGameHostPlayerId;
+                const presenceLabel = getPresenceLabel(player.id);
+                const presenceTone = getPresenceTone(player.id);
+
+                return (
+                  <li
+                    key={player.id}
+                    className={`game-player-chip ${isTurn ? 'is-turn' : ''} ${isSelf ? 'is-self' : ''}`}
+                  >
+                    <span
+                      className="selected-color"
+                      style={{ backgroundColor: player.color }}
+                    ></span>
+                    <span className="chip-player-name">{player.name}</span>
+                    <span className="chip-badge-row">
+                      {isSelf && <span className="chip-badge role-you">You</span>}
+                      {isHostPlayer && <span className="chip-badge role-host">Host</span>}
+                      {isTurn && <span className="chip-badge role-turn">Turn</span>}
+                      <span className={`chip-badge presence-${presenceTone}`}>{presenceLabel}</span>
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
           
@@ -986,10 +1075,6 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
               onHarnessSyncToServer={handleHarnessSyncToServer}
               onHarnessCommitStateToServer={handleHarnessCommitStateToServer}
           />
-          
-          <button className="leave-game-button" onClick={handleLeaveGame}>
-            Leave Game
-          </button>
         </div>
       );
     }

@@ -38,7 +38,14 @@
 .home-menu .floating-element {
   position: absolute;
   pointer-events: none;
-  animation: menu-float 24s infinite linear;
+  --float-rotation: 0deg;
+  --float-scale: 1;
+  --float-drift-x: 54px;
+  --float-drift-y: -38px;
+  --float-duration: 28s;
+  --float-delay: 0s;
+  transform: translate3d(0, 0, 0) rotate(var(--float-rotation)) scale(var(--float-scale));
+  animation: menu-float var(--float-duration) ease-in-out var(--float-delay) infinite alternate;
   opacity: 0.24;
   will-change: transform;
   filter: saturate(0.85);
@@ -252,11 +259,17 @@
 }
 
 @keyframes menu-float {
-  0% {
-    transform: translate(0, 0) rotate(0deg);
+  from {
+    transform:
+      translate3d(calc(var(--float-drift-x) * -1), calc(var(--float-drift-y) * -1), 0)
+      rotate(calc(var(--float-rotation) - 9deg))
+      scale(var(--float-scale));
   }
-  100% {
-    transform: translate(130px, -90px) rotate(360deg);
+  to {
+    transform:
+      translate3d(var(--float-drift-x), var(--float-drift-y), 0)
+      rotate(calc(var(--float-rotation) + 9deg))
+      scale(var(--float-scale));
   }
 }
 

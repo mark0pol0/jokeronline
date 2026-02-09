@@ -15,7 +15,14 @@
 .setup-screen .floating-element {
   position: fixed;
   pointer-events: none;
-  animation: setup-float 24s infinite linear;
+  --float-rotation: 0deg;
+  --float-scale: 1;
+  --float-drift-x: 50px;
+  --float-drift-y: -36px;
+  --float-duration: 30s;
+  --float-delay: 0s;
+  transform: translate3d(0, 0, 0) rotate(var(--float-rotation)) scale(var(--float-scale));
+  animation: setup-float var(--float-duration) ease-in-out var(--float-delay) infinite alternate;
   opacity: 0.2;
   mix-blend-mode: multiply;
   z-index: 0;
@@ -358,11 +365,17 @@
 }
 
 @keyframes setup-float {
-  0% {
-    transform: translate(0, 0) rotate(0deg);
+  from {
+    transform:
+      translate3d(calc(var(--float-drift-x) * -1), calc(var(--float-drift-y) * -1), 0)
+      rotate(calc(var(--float-rotation) - 8deg))
+      scale(var(--float-scale));
   }
-  100% {
-    transform: translate(110px, -80px) rotate(360deg);
+  to {
+    transform:
+      translate3d(var(--float-drift-x), var(--float-drift-y), 0)
+      rotate(calc(var(--float-rotation) + 8deg))
+      scale(var(--float-scale));
   }
 }
 
