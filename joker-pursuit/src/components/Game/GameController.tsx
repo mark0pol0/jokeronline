@@ -1971,11 +1971,34 @@ const GameController: React.FC<GameControllerProps> = ({
     
     Log(`Found ${moves.length} possible moves for peg ${pegId} with ${sevenCardState.firstMoveSteps} steps`);
     
-    // Find the move for this peg
-    const move = moves.find(m => m.pegId === pegId);
-    
-    if (!move || move.destinations.length === 0) {
+    // Find all moves for this peg so we can surface castle-entry choice when available.
+    const pegMoves = moves.filter(m => m.pegId === pegId);
+
+    if (pegMoves.length === 0) {
       Log(`No valid move available for peg ${pegId}`);
+      setPromptMessage('No valid move available for the selected peg. Please choose another peg.');
+      return;
+    }
+
+    const castleEntryMove = pegMoves.find(m => m.metadata?.castleEntry);
+    const regularMove = pegMoves.find(m => !m.metadata?.castleEntry);
+
+    if (castleEntryMove) {
+      Log(`Castle entry move available for split seven first move on peg ${pegId}; prompting for choice`);
+      setCastlePromptState({
+        isActive: true,
+        pegId,
+        regularMove,
+        castleMove: castleEntryMove
+      });
+      setPromptMessage("Would you like this peg to go into your castle?");
+      return;
+    }
+
+    const move = regularMove ?? pegMoves[0];
+
+    if (!move || move.destinations.length === 0) {
+      Log(`No valid move destination available for peg ${pegId}`);
       setPromptMessage('No valid move available for the selected peg. Please choose another peg.');
       return;
     }
@@ -3024,7 +3047,24 @@ const GameController: React.FC<GameControllerProps> = ({
     setPromptMessage("Move applied!");
     setCastlePromptState({ isActive: false, pegId: '' });
     
-    // Check if we're in the middle of a 9 card split move
+    // Check if we're in the middle of a 7 card split first move.
+    if (sevenCardState.isSplit && sevenCardState.state === 'STEPS_CHOSEN' && sevenCardState.firstMoveSteps) {
+      Log('Castle choice was part of a 7 card split first move, setting up second move');
+      const destination = moveToApply.destinations[0];
+
+      setSevenCardState(prev => ({
+        ...prev,
+        state: 'FIRST_MOVE_COMPLETE',
+        firstMovePegId: castlePromptState.pegId,
+        firstMoveDestination: destination,
+        remainingSteps: 7 - (prev.firstMoveSteps || 0)
+      }));
+      setPromptMessage('');
+      setFirstMoveCompleted(true);
+      return;
+    }
+
+    // Check if we're in the middle of a 9 card split move.
     if (nineCardState.state === 'STEPS_CHOSEN' && nineCardState.splitSelected && !nineCardState.firstMoveComplete) {
       Log('Castle move was part of a 9 card split first move, setting up second move');
       
