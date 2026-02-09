@@ -6,10 +6,10 @@
   flex-wrap: nowrap;
   gap: clamp(4px, 1vw, 12px);
   margin: 0;
-  padding: 2px 0;
+  padding: 16px 0 2px;
   background: transparent;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: hidden;
   scrollbar-width: none;
 }
 
@@ -27,6 +27,7 @@
   padding: 7px;
   cursor: pointer;
   position: relative;
+  z-index: 1;
   box-shadow:
     0 12px 18px rgba(4, 10, 18, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.75);
@@ -34,6 +35,7 @@
 }
 
 .playing-card:hover:not(.disabled):not(.hidden-card) {
+  z-index: 3;
   transform: translateY(-10px);
   box-shadow:
     0 16px 24px rgba(4, 10, 18, 0.33),
@@ -41,6 +43,7 @@
 }
 
 .playing-card.selected {
+  z-index: 4;
   transform: translateY(-14px);
   border-color: rgba(255, 225, 175, 0.95);
   box-shadow:
@@ -156,7 +159,7 @@
 @media (max-width: 700px) {
   .card-hand {
     justify-content: flex-start;
-    padding-inline: 8px;
+    padding: 12px 8px 2px;
   }
 
   .playing-card:hover:not(.disabled):not(.hidden-card) {

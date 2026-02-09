@@ -19,6 +19,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  --hand-dock-reserve: 176px;
 }
 
 .top-panel {
@@ -295,7 +296,7 @@
 .card-controls-container {
   position: absolute;
   left: 50%;
-  bottom: 10px;
+  bottom: calc(var(--hand-dock-reserve) + 8px);
   transform: translateX(-50%);
   z-index: 21;
   width: min(760px, calc(100% - 24px));
@@ -442,22 +443,46 @@
 }
 
 .bottom-panel {
-  position: relative;
-  z-index: 22;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 24;
   width: 100%;
-  min-height: 156px;
-  padding: 10px 16px 18px;
-  border-top: 1px solid rgba(213, 232, 246, 0.16);
-  background: linear-gradient(180deg, rgba(14, 25, 37, 0.08), rgba(8, 18, 28, 0.44));
+  min-height: 0;
+  padding: 8px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.bottom-panel::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: calc(4px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(920px, calc(100% - 18px));
+  height: calc(100% - 8px);
+  border-radius: 20px;
+  border: 1px solid rgba(214, 232, 246, 0.18);
+  background: linear-gradient(180deg, rgba(9, 18, 28, 0.04), rgba(9, 18, 28, 0.26));
+  box-shadow: 0 -10px 24px rgba(4, 10, 17, 0.24);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  pointer-events: none;
 }
 
 .card-hand-container {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   display: grid;
   align-content: end;
   justify-items: center;
   gap: 10px;
+  pointer-events: auto;
 }
 
 .multiplayer-hand-caption {
@@ -797,6 +822,10 @@
 }
 
 @media (max-width: 700px) {
+  .game-container {
+    --hand-dock-reserve: 166px;
+  }
+
   .top-panel {
     min-height: 68px;
     padding: 8px 10px;
@@ -818,7 +847,7 @@
 
   .zoom-controls {
     top: auto;
-    bottom: 168px;
+    bottom: calc(var(--hand-dock-reserve) + 6px);
     transform: none;
     grid-auto-flow: column;
     align-items: center;
@@ -837,7 +866,7 @@
   }
 
   .card-controls-container {
-    bottom: 6px;
+    bottom: calc(var(--hand-dock-reserve) + 8px);
     width: calc(100% - 12px);
   }
 
@@ -854,8 +883,7 @@
   }
 
   .bottom-panel {
-    min-height: 168px;
-    padding: 8px 8px 14px;
+    padding: 8px 8px calc(10px + env(safe-area-inset-bottom));
   }
 
   .welcome-modal {
