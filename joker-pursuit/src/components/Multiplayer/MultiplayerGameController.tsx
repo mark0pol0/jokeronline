@@ -220,6 +220,32 @@ const getCardToneClass = (card?: Card): 'red' | 'black' | 'joker' => {
   return 'black';
 };
 
+const getReadableTextColor = (backgroundColor?: string): string => {
+  if (!backgroundColor || !backgroundColor.startsWith('#')) {
+    return '#f1f8ff';
+  }
+
+  const hex = backgroundColor.slice(1);
+  const normalizedHex = hex.length === 3
+    ? hex.split('').map((char) => `${char}${char}`).join('')
+    : hex;
+
+  if (normalizedHex.length !== 6) {
+    return '#f1f8ff';
+  }
+
+  const red = parseInt(normalizedHex.slice(0, 2), 16);
+  const green = parseInt(normalizedHex.slice(2, 4), 16);
+  const blue = parseInt(normalizedHex.slice(4, 6), 16);
+
+  if (Number.isNaN(red) || Number.isNaN(green) || Number.isNaN(blue)) {
+    return '#f1f8ff';
+  }
+
+  const brightness = (red * 299 + green * 587 + blue * 114) / 1000;
+  return brightness >= 160 ? '#10202f' : '#f1f8ff';
+};
+
 const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ onBack }) => {
   const { 
     isOnlineMode,
@@ -819,6 +845,16 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       const recentOpponentMove = recentMove && recentMove.playerId !== playerId ? recentMove : null;
       
       const isCurrentPlayerTurn: boolean = !!(currentPlayer && currentPlayer.id === playerId);
+      const localPlayer = gameState.players.find((player) => player.id === playerId);
+      const activeTurnColor = currentPlayer?.color
+        || (currentPlayer?.id ? selectedColors[currentPlayer.id] : undefined)
+        || '#284258';
+      const localPlayerColor = localPlayer?.color
+        || (localPlayer?.id ? selectedColors[localPlayer.id] : undefined)
+        || activeTurnColor;
+      const turnPopupColor = isCurrentPlayerTurn ? localPlayerColor : activeTurnColor;
+      const turnPopupTextColor = getReadableTextColor(turnPopupColor);
+      const activeTurnPlayerName = currentTurnPlayer || currentPlayer?.name || 'opponent';
 
       console.log('🎮 Rendering game with current player turn:', {
         currentPlayerIndex,
@@ -867,14 +903,24 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
             </ul>
           </div>
           
-          {!isCurrentPlayerTurn && (
-            <div className="player-waiting-overlay">
-              <div className="player-waiting-message">
-                <h3>Waiting for {currentTurnPlayer}'s turn</h3>
-                <p>Please wait while the other player makes their move<span className="loading-dots"></span></p>
-              </div>
+          <div
+            className={`player-waiting-overlay ${isCurrentPlayerTurn ? 'your-turn' : 'opponent-turn'}`}
+            style={
+              {
+                '--turn-popup-color': turnPopupColor,
+                '--turn-popup-text-color': turnPopupTextColor
+              } as React.CSSProperties
+            }
+          >
+            <div className="player-waiting-message">
+              <h3>{isCurrentPlayerTurn ? "It's your turn!" : `Waiting for ${activeTurnPlayerName}`}</h3>
+              {isCurrentPlayerTurn ? (
+                <p>Play a card and make your move.</p>
+              ) : (
+                <p>{activeTurnPlayerName} is making a move<span className="loading-dots"></span></p>
+              )}
             </div>
-          )}
+          </div>
 
           {recentOpponentMove && (
             <aside
