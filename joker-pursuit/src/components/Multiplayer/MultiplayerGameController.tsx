@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useMultiplayer, MultiplayerPlayer } from '../../context/MultiplayerContext';
 import { GameState } from '../../models/GameState';
 import { createBoard } from '../../models/BoardModel';
-import { Card, Rank, Suit, createDeck, shuffleDeck } from '../../models/Card';
+import { Card, Rank, Suit, createDecks, shuffleDeck } from '../../models/Card';
 import GameController from '../Game/GameController';
 import './MultiplayerStyles.css';
 
@@ -505,7 +505,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       return;
     }
 
-    const deck = generateShuffledDeck();
+    const deck = generateShuffledDeck(players.length);
 
     const playerColorsBySection = players.reduce((colors, player, index) => {
       const color = selectedColors[player.id] || player.color || '#CCCCCC';
@@ -607,9 +607,9 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     }, 750);
   };
 
-  const generateShuffledDeck = (): Card[] => {
-    // Reuse shared card model logic so multiplayer card values match local mode exactly.
-    return shuffleDeck(createDeck());
+  const generateShuffledDeck = (playerCount: number): Card[] => {
+    // Match local mode: one shared pile containing one full deck per player.
+    return shuffleDeck(createDecks(playerCount));
   };
 
   const handleLeaveGame = () => {

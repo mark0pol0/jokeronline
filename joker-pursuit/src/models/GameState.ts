@@ -1,5 +1,5 @@
 import { createBoard, Board, BoardSpace } from './BoardModel';
-import { Card, createDeck } from './Card';
+import { Card, createDecks } from './Card';
 import { Player, createPlayer } from './Player';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -94,15 +94,7 @@ export const createInitialGameState = (
   });
   
   // Create one deck per player
-  const decks = Array(players.length).fill(null).map((_, deckIndex) => {
-    const deck = createDeck();
-    // Make card IDs unique by adding deck index
-    return deck.map(card => ({
-      ...card,
-      id: `${card.id}_deck${deckIndex}`
-    }));
-  });
-  const combinedDeck = decks.flat();
+  const combinedDeck = createDecks(players.length);
   
   // Create initial game state (cards will be shuffled later)
   const gameState: GameState = {

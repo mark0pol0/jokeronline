@@ -1578,17 +1578,23 @@ export const applyMove = (gameState: GameState, move: Move): { newState: GameSta
   // Update player's completion status
   player.isComplete = allPegsInCastle;
   
-  // Draw a new card if there are cards in the draw pile and this isn't the first part of a multi-part move
-  if (newState.drawPile.length > 0) {
-    if (!isFirstMoveOfMultiPartMove) {
+  // Draw a replacement card after completing the turn action (except first split-half moves).
+  if (!isFirstMoveOfMultiPartMove) {
+    if (newState.drawPile.length === 0 && newState.discardPile.length > 0) {
+      newState.drawPile = [...newState.discardPile].sort(() => Math.random() - 0.5);
+      newState.discardPile = [];
+      console.log('[applyMove] Draw pile was empty, reshuffled discard pile into draw pile');
+    }
+
+    if (newState.drawPile.length > 0) {
       const newCard = newState.drawPile.pop()!;
       player.hand.push(newCard);
       console.log(`[applyMove] Player ${player.name} drew a new card: ${newCard.rank} of ${newCard.suit}`);
     } else {
-      console.log(`[applyMove] NOT drawing a card yet - this is part 1 of a multi-part move`);
+      console.log(`[applyMove] No cards available to draw for player ${player.name}`);
     }
   } else {
-    console.log(`[applyMove] Draw pile is empty, no new card for player ${player.name}`);
+    console.log(`[applyMove] NOT drawing a card yet - this is part 1 of a multi-part move`);
   }
   
   // Record the move

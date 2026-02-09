@@ -65,6 +65,20 @@ export const createDeck = (): Card[] => {
   return deck;
 };
 
+// Create multiple 54-card decks with unique IDs for each deck copy.
+export const createDecks = (count: number): Card[] => {
+  if (count <= 0) {
+    return [];
+  }
+
+  return Array.from({ length: count }, (_, deckIndex) =>
+    createDeck().map(card => ({
+      ...card,
+      id: `${card.id}_deck${deckIndex}`
+    }))
+  ).flat();
+};
+
 // Shuffle a deck of cards
 export const shuffleDeck = (deck: Card[]): Card[] => {
   const shuffled = [...deck];
