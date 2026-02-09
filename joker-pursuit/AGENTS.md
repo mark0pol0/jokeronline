@@ -124,9 +124,11 @@ If any step fails, report the failure and reason clearly.
 
 ## 5) Completion Workflow (Default)
 
-Unless the user explicitly says otherwise, always:
-1. Commit intended files only.
-2. Push the branch to `origin`.
+Repository owner preference (default):
+1. Work directly on `main` (do not create feature branches unless explicitly requested).
+2. Stage intended files only.
+3. Commit intended files only.
+4. Push `main` to `origin`.
 
 Deploys are conditional by change scope:
 1. Deploy frontend to Vercel only when frontend/runtime client surface changed.
