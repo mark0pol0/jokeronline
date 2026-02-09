@@ -344,6 +344,12 @@ const Log = (message: string, ...args: any[]) => {
   console.log(`[GameController] ${message}`, ...args);
 };
 
+const getNineSplitStepQuestion = (direction: 'forward' | 'backward'): string =>
+  `How many spaces ${direction} would you like to move one peg first?`;
+
+const getNinePegSelectionPrompt = (direction: 'forward' | 'backward', steps: number): string =>
+  `Which peg do you want to move ${direction} by ${steps}?`;
+
 const GameController: React.FC<GameControllerProps> = ({ 
   playerNames, 
   playerTeams,
@@ -1664,7 +1670,7 @@ const GameController: React.FC<GameControllerProps> = ({
       state: 'SPLIT_SELECT_STEPS',
       direction 
     }));
-    setPromptMessage(`How many spaces ${direction} would you like to move? (1-8)`);
+    setPromptMessage(getNineSplitStepQuestion(direction));
   };
   
   // Handle nine card steps selection
@@ -1679,8 +1685,9 @@ const GameController: React.FC<GameControllerProps> = ({
       state: 'STEPS_CHOSEN',
       steps 
     }));
-    
-    setPromptMessage("Click on a peg to move");
+
+    const firstMoveDirection = nineCardState.direction ?? 'forward';
+    setPromptMessage(getNinePegSelectionPrompt(firstMoveDirection, steps));
     
     // Calculate selectable spaces for the first move
     if (selectedCardId) {
@@ -1938,7 +1945,7 @@ const GameController: React.FC<GameControllerProps> = ({
             selectablePegsForSecondMove: selectablePegs
           }));
           
-          setPromptMessage(`Select a different peg to move ${nineCardState.remainingSteps} spaces ${secondMoveDirection}.`);
+          setPromptMessage(getNinePegSelectionPrompt(secondMoveDirection, nineCardState.remainingSteps));
         }
       }
       
@@ -2235,58 +2242,19 @@ const GameController: React.FC<GameControllerProps> = ({
       return;
     }
 
-    // Check if any moves will pass or land on castle entrance
-    const movesPassingCastle = pegMoves.filter(move => move.metadata?.willPassCastleEntrance);
-    const movesLandingOnCastle = pegMoves.filter(move => move.metadata?.willLandOnCastleEntrance);
-    
-    Log(`Moves passing castle entrance: ${movesPassingCastle.length}`);
-    Log(`Moves landing on castle entrance: ${movesLandingOnCastle.length}`);
+    const regularMoves = pegMoves.filter(move => !move.metadata?.castleMovement);
+    const castleMoves = pegMoves.filter(move => move.metadata?.castleMovement);
+    Log(`Second split seven move options for peg ${pegId}: regular=${regularMoves.length}, castle=${castleMoves.length}`);
 
-    // Add castle entry options
-    const castleEntryMoves = pegMoves.filter(move => move.metadata?.castleEntry);
-    Log(`Castle entry moves: ${castleEntryMoves.length}`);
-
-    // Handle castle entry decision if the move would pass the castle entrance but not land on it
-    if (movesPassingCastle.length > 0 && !movesLandingOnCastle.length && castleEntryMoves.length > 0) {
-      const regularMove = pegMoves.find(move => !move.metadata?.castleEntry);
-      const castleMove = castleEntryMoves[0];
-      
-      if (regularMove && castleMove) {
-        // Prompt the player with a choice
-        setCastlePromptState({
-          isActive: true,
-          pegId,
-          regularMove: regularMove,
-          castleMove: castleMove
-        });
-        
-        // Display a prompt message to the player
-        setPromptMessage("Would you like this peg to go into your castle?");
-        return;
-      }
-    }
-    
-    // Handle castle entry decision if landing exactly on castle entrance
-    if (movesLandingOnCastle.length > 0) {
-      // Find or create a castle entry move
-      const castleEntryMove = castleEntryMoves.length > 0 ? castleEntryMoves[0] : null;
-      const regularMove = movesLandingOnCastle[0]; // The move that lands on the entrance
-      
-      // Only prompt if we have both options
-      if (castleEntryMove && regularMove) {
-        Log(`Landing on castle entrance - prompting for entry choice`);
-        // Prompt the player with a choice
-        setCastlePromptState({
-          isActive: true,
-          pegId,
-          regularMove: regularMove,
-          castleMove: castleEntryMove
-        });
-        
-        // Display a prompt message to the player
-        setPromptMessage("Would you like this peg to go into your castle?");
-        return;
-      }
+    if (regularMoves.length > 0 && castleMoves.length > 0) {
+      setCastlePromptState({
+        isActive: true,
+        pegId,
+        regularMove: regularMoves[0],
+        castleMove: castleMoves[0]
+      });
+      setPromptMessage("Would you like this peg to go into your castle?");
+      return;
     }
 
     // If there's only one valid move (for cases with no castle options)
@@ -2820,7 +2788,7 @@ const GameController: React.FC<GameControllerProps> = ({
       remainingSteps: secondMoveSteps // Store the correct secondMoveSteps value
     }));
     
-    setPromptMessage('Select a different peg for the second part of your 9 card split.');
+    setPromptMessage(getNinePegSelectionPrompt(secondMoveDirection, secondMoveSteps));
   };
 
   // Add a new function to handle the second part of the 9 card move
@@ -3915,8 +3883,11 @@ const GameController: React.FC<GameControllerProps> = ({
                 {/* Split mode - Step input */}
                 {nineCardState.state === 'SPLIT_SELECT_STEPS' && nineCardState.splitSelected && (
                   <div className="steps-input">
-                    <p>First peg moves forward. Second peg moves backward. Both movements must add up to 9.</p>
-                    <p>How many steps should the first peg move forward?</p>
+                    <p>
+                      {nineCardState.direction
+                        ? getNineSplitStepQuestion(nineCardState.direction)
+                        : 'How many spaces would you like to move first?'}
+                    </p>
                     <div className="step-buttons-grid">
                       {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
                         <button 
@@ -3926,10 +3897,12 @@ const GameController: React.FC<GameControllerProps> = ({
                           className="step-button"
                         >
                           <span className="step-number">{num}</span>
-                          <span className="step-direction">
-                            <span className="forward-text">{num} forward</span>
-                            <span className="backward-text">{9-num} backward</span>
-                          </span>
+                          {nineCardState.direction === 'forward' && (
+                            <span className="step-direction">
+                              <span className="forward-text">{num} forward</span>
+                              <span className="backward-text">{9-num} backward</span>
+                            </span>
+                          )}
                         </button>
                       ))}
                     </div>
