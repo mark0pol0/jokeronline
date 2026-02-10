@@ -171,6 +171,7 @@ describe('MultiplayerGameController', () => {
     const requestSync = jest.fn().mockResolvedValue(undefined);
     mockMultiplayerState({
       isGameStarted: true,
+      stateVersion: 2,
       requestSync
     });
 
@@ -181,6 +182,21 @@ describe('MultiplayerGameController', () => {
     await waitFor(() => {
       expect(requestSync).toHaveBeenCalled();
     });
+  });
+
+  test('keeps color selection screen for fresh start when no game snapshot exists', () => {
+    const requestSync = jest.fn().mockResolvedValue(undefined);
+    mockMultiplayerState({
+      isGameStarted: true,
+      stateVersion: 1,
+      requestSync
+    });
+
+    render(<MultiplayerGameController onBack={jest.fn()} />);
+
+    expect(screen.getByText('Choose Your Color')).toBeInTheDocument();
+    expect(screen.queryByText('Reconnecting to your seat...')).not.toBeInTheDocument();
+    expect(requestSync).not.toHaveBeenCalled();
   });
 
   test('applies equal-version snapshots so sync can recover optimistic drift', () => {

@@ -298,7 +298,11 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const [returnLinkCopyStatus, setReturnLinkCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const latestSnapshotVersionRef = useRef<number>(0);
   const gameStateRef = useRef<GameState | null>(null);
-  const isWaitingForStartedGameSnapshot = isOnlineMode && isGameStarted && !gameState;
+  const isWaitingForStartedGameSnapshot =
+    isOnlineMode &&
+    isGameStarted &&
+    !gameState &&
+    stateVersion > 1;
   const getCurrentBaseVersion = useCallback((): number => {
     return Math.max(latestSnapshotVersionRef.current, stateVersion, appliedSnapshotVersion);
   }, [stateVersion, appliedSnapshotVersion]);
