@@ -3537,8 +3537,9 @@ const GameController: React.FC<GameControllerProps> = ({
     }
     
     if (isMultiplayer && onMove) {
-      // Optimistically update local UI, then hand the canonical commit to the multiplayer layer.
-      setGameState(nextState);
+      // Keep snapshot state authoritative in multiplayer. If the submit path
+      // fails, optimistic local turn-advances can desync clickability from the
+      // parent turn banner ("it's your turn" while local currentPlayer differs).
       onMove({
         type: actionType,
         nextGameState: nextState

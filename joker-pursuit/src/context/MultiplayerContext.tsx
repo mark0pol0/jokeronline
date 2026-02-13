@@ -561,7 +561,6 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
         setPlayerId(resolvedPlayerId);
         setSessionToken(finalSessionToken);
         setPlayers(response.players || []);
-        setPlayersPresence({});
         setHostPlayerId(response.players?.[0]?.id || null);
         setIsHost(Boolean(response.isHost));
         setIsGameStarted(Boolean(response.isGameStarted));
@@ -638,7 +637,6 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
         setPlayerId(resolvedPlayerId);
         setSessionToken(sessionToken);
         setPlayers(response.players || []);
-        setPlayersPresence({});
         setHostPlayerId(response.players?.[0]?.id || null);
         setIsHost(Boolean(response.isHost));
         setIsGameStarted(Boolean(response.isGameStarted));

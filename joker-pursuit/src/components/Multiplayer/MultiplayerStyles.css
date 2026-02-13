@@ -765,6 +765,11 @@
   backdrop-filter: blur(11px);
   -webkit-backdrop-filter: blur(11px);
   box-shadow: 0 18px 28px rgba(4, 10, 18, 0.34);
+  pointer-events: none;
+}
+
+.game-header button {
+  pointer-events: auto;
 }
 
 .mobile-match-menu-button {
@@ -949,6 +954,7 @@
       color-mix(in srgb, var(--turn-popup-color, #36526a) 70%, black 30%)
     );
   box-shadow: 0 14px 24px color-mix(in srgb, var(--turn-popup-color, #36526a) 45%, black 55%);
+  pointer-events: none;
 }
 
 .player-waiting-overlay.your-turn {
@@ -989,6 +995,7 @@
   gap: 8px;
   justify-items: center;
   animation: opponent-play-enter 280ms ease;
+  pointer-events: none;
 }
 
 .opponent-play-panel.during-your-turn {

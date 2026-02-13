@@ -331,6 +331,7 @@
   padding: 12px 16px;
   font-size: 0.96rem;
   font-weight: 600;
+  pointer-events: none;
 }
 
 .bump-message {
@@ -482,6 +483,16 @@
   align-content: end;
   justify-items: center;
   gap: 10px;
+  pointer-events: none;
+}
+
+.card-hand-container .card-hand {
+  pointer-events: none;
+}
+
+.card-hand-container .card-hand .playing-card,
+.card-hand-container .reveal-hand-button,
+.card-hand-container .discard-hand-button {
   pointer-events: auto;
 }
 
