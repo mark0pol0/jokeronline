@@ -285,7 +285,6 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   } = useMultiplayer();
   
   const [gameState, setGameState] = useState<GameState | null>(null);
-  const [isCurrentPlayerTurn, setIsCurrentPlayerTurn] = useState<boolean>(false);
   const [currentTurnPlayer, setCurrentTurnPlayer] = useState<string>('');
   const [selectedColors, setSelectedColors] = useState<Record<string, string>>({});
   const [gamePhase, setGamePhase] = useState<'setup' | 'colorSelection' | 'shuffling' | 'playing'>('colorSelection');
@@ -295,9 +294,11 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const [presenceNow, setPresenceNow] = useState<number>(() => Date.now());
   const [hydrationAttemptCount, setHydrationAttemptCount] = useState(0);
   const [snapshotHydrationFailed, setSnapshotHydrationFailed] = useState(false);
+  const [snapshotSelfPlayerId, setSnapshotSelfPlayerId] = useState<string | null>(null);
   const [returnLinkCopyStatus, setReturnLinkCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const latestSnapshotVersionRef = useRef<number>(0);
   const gameStateRef = useRef<GameState | null>(null);
+  const effectivePlayerId = snapshotSelfPlayerId || playerId;
   const isWaitingForStartedGameSnapshot =
     isOnlineMode &&
     isGameStarted &&
@@ -402,9 +403,6 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       setGameState(clonedState);
       setGamePhase('playing');
       setCurrentTurnPlayer(normalizedGameState.players[normalizedGameState.currentPlayerIndex]?.name || '');
-      setIsCurrentPlayerTurn(
-        normalizedGameState.players[normalizedGameState.currentPlayerIndex]?.id === playerId
-      );
     };
 
     const onRoomSnapshot = (snapshot: {
@@ -419,6 +417,10 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
 
       if (roomCode && snapshot.roomCode?.toUpperCase() !== roomCode.toUpperCase()) {
         return;
+      }
+
+      if (snapshot.selfPlayerId?.trim()) {
+        setSnapshotSelfPlayerId(snapshot.selfPlayerId.trim());
       }
 
       applyIncomingGameState(snapshot.gameState, snapshot.stateVersion);
@@ -465,7 +467,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       socket.off('action-rejected-v2', onActionRejected);
       socket.off('game-state-updated', onLegacyGameStateUpdate);
     };
-  }, [isOnlineMode, playerId, requestSync, roomCode, socket]);
+  }, [isOnlineMode, requestSync, roomCode, socket]);
 
   useEffect(() => {
     if (!isWaitingForStartedGameSnapshot) {
@@ -525,7 +527,12 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
 
   // Handle player making a move
   const handleMove = async (moveData: any) => {
-    if (!roomCode || !sessionToken || !playerId || !isCurrentPlayerTurn) {
+    const isLocalPlayersTurn = Boolean(
+      gameState?.players?.[gameState.currentPlayerIndex]?.id &&
+      gameState.players[gameState.currentPlayerIndex].id === effectivePlayerId
+    );
+
+    if (!roomCode || !sessionToken || !effectivePlayerId || !isLocalPlayersTurn) {
       console.error('❌ Cannot make move: not connected or not your turn');
       return;
     }
@@ -601,10 +608,12 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       await updatePlayerColor(color);
       
       // Update local state
-      setSelectedColors(prev => ({
-        ...prev,
-        [playerId!]: color
-      }));
+      if (effectivePlayerId) {
+        setSelectedColors(prev => ({
+          ...prev,
+          [effectivePlayerId]: color
+        }));
+      }
     } catch (error) {
       console.error('Failed to update color:', error);
     }
@@ -687,7 +696,6 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
 
     setGameState(cloneGameState(initialGameStateForClient));
     setCurrentTurnPlayer(playerStates[0]?.name || '');
-    setIsCurrentPlayerTurn(playerStates[0]?.id === playerId);
     setGamePhase('playing');
 
     try {
@@ -733,8 +741,8 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       return;
     }
 
-    const fallbackName = players.find(player => player.id === playerId)?.name
-      || gameState?.players.find(player => player.id === playerId)?.name
+    const fallbackName = players.find(player => player.id === effectivePlayerId)?.name
+      || gameState?.players.find(player => player.id === effectivePlayerId)?.name
       || '';
     const returnLink = `${window.location.origin}/?room=${encodeURIComponent(roomCode)}${fallbackName ? `&name=${encodeURIComponent(fallbackName)}` : ''}`;
 
@@ -745,7 +753,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       console.error('Failed to copy return link', copyError);
       setReturnLinkCopyStatus('failed');
     }
-  }, [roomCode, players, playerId, gameState]);
+  }, [roomCode, players, effectivePlayerId, gameState]);
 
   const memoizedPlayerNames = useMemo(
     () => gameState?.players.map(player => player.name) || [],
@@ -862,7 +870,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
 
   // Render color selection screen
   const renderColorSelection = () => {
-    const localPlayerId = playerId || null;
+    const localPlayerId = effectivePlayerId || null;
     const allPlayersHaveColors = players.every(
       (player: MultiplayerPlayer) => selectedColors[player.id]
     );
@@ -1019,11 +1027,11 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
           name: currentPlayer.name,
           isHost: (currentPlayer as any).isHost
         } : null,
-        localPlayerId: playerId,
-        isCurrentPlayerTurn: !!(currentPlayer && currentPlayer.id === playerId)
+        localPlayerId: effectivePlayerId,
+        isCurrentPlayerTurn: !!(currentPlayer && currentPlayer.id === effectivePlayerId)
       });
     }
-  }, [gameState, gamePhase, playerId]);
+  }, [gameState, gamePhase, effectivePlayerId]);
 
   // Debug effect to log game state changes
   useEffect(() => {
@@ -1035,10 +1043,10 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
         playerCount: gameState.players?.length || 0,
         drawPileSize: gameState.drawPile?.length || 0,
         discardPileSize: gameState.discardPile?.length || 0,
-        isLocalPlayerTurn: gameState.players?.[gameState.currentPlayerIndex]?.id === playerId
+        isLocalPlayerTurn: gameState.players?.[gameState.currentPlayerIndex]?.id === effectivePlayerId
       });
     }
-  }, [gameState, playerId]);
+  }, [gameState, effectivePlayerId]);
 
   // Render the appropriate content based on game phase
   const renderGameContent = () => {
@@ -1063,10 +1071,10 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
     if (gameState && gameState.players && gameState.players.length > 0) {
       const currentPlayerIndex = gameState.currentPlayerIndex || 0;
       const currentPlayer = gameState.players[currentPlayerIndex];
-      const recentOpponentMove = recentMove && recentMove.playerId !== playerId ? recentMove : null;
+      const recentOpponentMove = recentMove && recentMove.playerId !== effectivePlayerId ? recentMove : null;
       
-      const isCurrentPlayerTurn: boolean = !!(currentPlayer && currentPlayer.id === playerId);
-      const localPlayer = gameState.players.find((player) => player.id === playerId);
+      const isCurrentPlayerTurn: boolean = !!(currentPlayer && currentPlayer.id === effectivePlayerId);
+      const localPlayer = gameState.players.find((player) => player.id === effectivePlayerId);
       const activeTurnColor = currentPlayer?.color
         || (currentPlayer?.id ? selectedColors[currentPlayer.id] : undefined)
         || '#284258';
@@ -1081,13 +1089,13 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       console.log('🎮 Rendering game with current player turn:', {
         currentPlayerIndex,
         isCurrentPlayerTurn,
-        myId: playerId
+        myId: effectivePlayerId
       });
 
       console.log("Turn information:", {
         currentPlayerIndex,
         currentPlayerId: currentPlayer?.id,
-        localPlayerId: playerId,
+        localPlayerId: effectivePlayerId,
         isCurrentPlayerTurn
       });
       
@@ -1138,7 +1146,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
             )}
             <ul className="game-player-list">
               {gameState.players.map((player, index) => {
-                const isSelf = player.id === playerId;
+                const isSelf = player.id === effectivePlayerId;
                 const isTurn = currentPlayerIndex === index;
                 const isHostPlayer = player.id === inGameHostPlayerId;
                 const presenceLabel = getPresenceLabel(player.id);
@@ -1227,7 +1235,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
               isCurrentPlayerTurn={isCurrentPlayerTurn}
               onMove={handleMove}
               gameStateOverride={memoizedGameStateOverride}
-              localPlayerId={playerId || undefined}
+              localPlayerId={effectivePlayerId || undefined}
               recentMoveHighlight={recentMoveHighlight}
               onHarnessSyncToServer={handleHarnessSyncToServer}
               onHarnessCommitStateToServer={handleHarnessCommitStateToServer}

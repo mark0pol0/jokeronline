@@ -235,6 +235,14 @@ const getRejoinErrorMessage = (errorMessage?: string): string => {
   return errorMessage;
 };
 
+const isSessionUnboundError = (errorMessage?: string): boolean => {
+  if (!errorMessage) {
+    return false;
+  }
+
+  return errorMessage.toLowerCase().includes('session is not bound to this connection');
+};
+
 // Create context with default values
 const MultiplayerContext = createContext<MultiplayerContextType>({
   isOnlineMode: false,
@@ -284,6 +292,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
   const [error, setError] = useState<string | null>(null);
   const lastBoundSocketIdRef = useRef<string | null>(null);
   const rejoinInFlightRef = useRef(false);
+  const sessionRebindPromiseRef = useRef<Promise<void> | null>(null);
   const attemptedBindKeysRef = useRef<Set<string>>(new Set());
 
   const clearError = () => setError(null);
@@ -361,13 +370,21 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
 
     const onRoomSnapshot = (snapshot: RoomSnapshotV2) => {
       if (!roomCode || snapshot.roomCode.toUpperCase() === roomCode.toUpperCase()) {
+        const snapshotSelfPlayerId = snapshot.selfPlayerId?.trim() || null;
+        if (snapshotSelfPlayerId && snapshotSelfPlayerId !== playerId) {
+          setPlayerId(snapshotSelfPlayerId);
+          if (sessionToken) {
+            writeStoredSession(snapshot.roomCode, sessionToken, snapshotSelfPlayerId);
+          }
+        }
+
         setStateVersion(prev => Math.max(prev, snapshot.stateVersion));
         setPlayers(snapshot.players || []);
         setPlayersPresence(snapshot.playersPresence || {});
         setIsGameStarted(Boolean(snapshot.isStarted || snapshot.gameState));
         setHostPlayerId(snapshot.hostPlayerId || snapshot.players?.[0]?.id || null);
         if (snapshot.hostPlayerId) {
-          const selfId = snapshot.selfPlayerId || playerId;
+          const selfId = snapshotSelfPlayerId || playerId;
           if (selfId) {
             setIsHost(snapshot.hostPlayerId === selfId);
           }
@@ -408,7 +425,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
       socket.off('action-rejected-v2', onActionRejected);
       socket.off('host-updated-v2', onHostUpdated);
     };
-  }, [socket, roomCode, playerId]);
+  }, [socket, roomCode, playerId, sessionToken]);
 
   // Legacy listeners remain for rollback mode
   useEffect(() => {
@@ -560,6 +577,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
         );
       })
       .catch((rejoinError: Error) => {
+        attemptedBindKeysRef.current.delete(bindAttemptKey);
         const rawMessage = rejoinError.message || 'Unable to reclaim your seat.';
         console.warn('[multiplayer] Session bind failed:', rawMessage);
 
@@ -583,6 +601,66 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
         rejoinInFlightRef.current = false;
         setIsRejoining(false);
       });
+  }, [socket, isConnected, roomCode, sessionToken, playerId]);
+
+  const rebindSessionToCurrentSocket = useCallback(async (): Promise<void> => {
+    if (!ENABLE_PROTOCOL_V2) {
+      return;
+    }
+
+    if (sessionRebindPromiseRef.current) {
+      return sessionRebindPromiseRef.current;
+    }
+
+    if (!socket || !isConnected || !roomCode || !sessionToken) {
+      throw new Error('Missing multiplayer session context.');
+    }
+
+    const rebindPromise = (async () => {
+      rejoinInFlightRef.current = true;
+      setIsRejoining(true);
+
+      try {
+        const response = await rejoinRoomV2(socket, roomCode, sessionToken);
+        const resolvedRoomCode = (response.roomCode || roomCode || '').toUpperCase();
+        const resolvedPlayerId = response.playerId || playerId || null;
+
+        if (!resolvedRoomCode || !resolvedPlayerId) {
+          throw new Error('Server did not return room identity.');
+        }
+
+        const resolvedPlayerName = response.players?.find(player => player.id === resolvedPlayerId)?.name
+          || readNameFromUrl();
+
+        setIsOnlineMode(true);
+        setRoomId(response.roomId || null);
+        setRoomCode(resolvedRoomCode);
+        setPlayerId(resolvedPlayerId);
+        setSessionToken(sessionToken);
+        setPlayers(response.players || []);
+        setPlayersPresence({});
+        setHostPlayerId(response.players?.[0]?.id || null);
+        setIsHost(Boolean(response.isHost));
+        setIsGameStarted(Boolean(response.isGameStarted));
+        setStateVersion(prev => Math.max(prev, response.stateVersion || prev));
+        setError(null);
+
+        writeStoredSession(resolvedRoomCode, sessionToken, resolvedPlayerId);
+        replaceRoomUrl(resolvedRoomCode, resolvedPlayerName);
+        lastBoundSocketIdRef.current = socket.id || null;
+      } finally {
+        rejoinInFlightRef.current = false;
+        setIsRejoining(false);
+      }
+    })();
+
+    sessionRebindPromiseRef.current = rebindPromise;
+
+    try {
+      await rebindPromise;
+    } finally {
+      sessionRebindPromiseRef.current = null;
+    }
   }, [socket, isConnected, roomCode, sessionToken, playerId]);
 
   const createRoom = async (playerName: string): Promise<void> => {
@@ -830,9 +908,20 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
       throw new Error('Missing multiplayer session context.');
     }
 
-    const response = await submitActionV2(socket, roomCode, sessionToken, baseVersion, action);
-    setStateVersion(prev => Math.max(prev, response.stateVersion || prev));
-  }, [socket, roomCode, sessionToken]);
+    try {
+      const response = await submitActionV2(socket, roomCode, sessionToken, baseVersion, action);
+      setStateVersion(prev => Math.max(prev, response.stateVersion || prev));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to submit action.';
+      if (!isSessionUnboundError(message)) {
+        throw error;
+      }
+
+      await rebindSessionToCurrentSocket();
+      const response = await submitActionV2(socket, roomCode, sessionToken, baseVersion, action);
+      setStateVersion(prev => Math.max(prev, response.stateVersion || prev));
+    }
+  }, [socket, roomCode, sessionToken, rebindSessionToCurrentSocket]);
 
   const requestSync = useCallback(async (): Promise<void> => {
     if (!ENABLE_PROTOCOL_V2) {
@@ -843,9 +932,20 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
       throw new Error('Missing multiplayer session context.');
     }
 
-    const response = await requestSyncV2(socket, roomCode, sessionToken);
-    setStateVersion(prev => Math.max(prev, response.stateVersion || prev));
-  }, [socket, roomCode, sessionToken]);
+    try {
+      const response = await requestSyncV2(socket, roomCode, sessionToken);
+      setStateVersion(prev => Math.max(prev, response.stateVersion || prev));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to sync game state.';
+      if (!isSessionUnboundError(message)) {
+        throw error;
+      }
+
+      await rebindSessionToCurrentSocket();
+      const response = await requestSyncV2(socket, roomCode, sessionToken);
+      setStateVersion(prev => Math.max(prev, response.stateVersion || prev));
+    }
+  }, [socket, roomCode, sessionToken, rebindSessionToCurrentSocket]);
 
   const leaveRoom = () => {
     if (socket && roomCode && sessionToken && ENABLE_PROTOCOL_V2) {

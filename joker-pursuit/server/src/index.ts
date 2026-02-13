@@ -1,10 +1,10 @@
 import express from 'express';
 import http from 'http';
-import { Server } from 'socket.io';
+import { Server, Socket } from 'socket.io';
 import cors from 'cors';
 import { randomBytes } from 'crypto';
 import { ActionProcessor } from './game/ActionProcessor';
-import { createRoomStore } from './store/RoomStore';
+import { createRoomStore, RoomStore } from './store/RoomStore';
 import {
   GameActionV2,
   PlayerPresence,
@@ -164,6 +164,51 @@ function setSocketSession(socketId: string, session: { roomCode: string; playerI
 
 function clearSocketSession(socketId: string) {
   socketSessions.delete(socketId);
+}
+
+async function ensureSessionBoundToSocket(
+  store: RoomStore,
+  room: RoomStateV2,
+  session: PlayerSession,
+  socket: Socket
+): Promise<{ player: RoomPlayerV2 | null; rebound: boolean; error?: string }> {
+  const player = room.players.find(entry => entry.id === session.playerId);
+  if (!player) {
+    return { player: null, rebound: false, error: 'Player not found.' };
+  }
+
+  if (player.connected && player.socketId === socket.id) {
+    return { player, rebound: false };
+  }
+
+  if (player.disconnectedAt && getNow() - player.disconnectedAt > DISCONNECT_GRACE_MS) {
+    return { player: null, rebound: false, error: 'Reconnect grace period expired.' };
+  }
+
+  if (player.socketId && player.socketId !== socket.id) {
+    clearSocketSession(player.socketId);
+    io.sockets.sockets.get(player.socketId)?.leave(room.id);
+  }
+
+  player.connected = true;
+  player.socketId = socket.id;
+  delete player.disconnectedAt;
+  room.updatedAt = getNow();
+
+  await store.saveSession({
+    ...session,
+    lastSeenAt: getNow()
+  });
+  await store.saveRoom(room);
+
+  setSocketSession(socket.id, {
+    roomCode: room.code,
+    playerId: player.id,
+    sessionToken: session.token
+  });
+  socket.join(room.id);
+
+  return { player, rebound: true };
 }
 
 function pruneExpiredDisconnectedPlayers(room: RoomStateV2): RoomStateV2 {
@@ -483,9 +528,9 @@ io.on('connection', (socket) => {
           return;
         }
 
-        const hostPlayer = room.players.find(entry => entry.id === session.playerId);
-        if (!hostPlayer || !hostPlayer.connected || hostPlayer.socketId !== socket.id) {
-          callback({ success: false, error: 'Session is not bound to this connection.' });
+        const binding = await ensureSessionBoundToSocket(store, room, session, socket);
+        if (!binding.player) {
+          callback({ success: false, error: binding.error || 'Session is not bound to this connection.' });
           return;
         }
 
@@ -527,11 +572,12 @@ io.on('connection', (socket) => {
             return;
           }
 
-          const player = room.players.find(entry => entry.id === session.playerId);
-          if (!player || !player.connected || player.socketId !== socket.id) {
-            callback({ success: false, error: 'Player not found.' });
+          const binding = await ensureSessionBoundToSocket(store, room, session, socket);
+          if (!binding.player) {
+            callback({ success: false, error: binding.error || 'Player not found.' });
             return;
           }
+          const player = binding.player;
 
           player.color = color;
           if (room.gameState?.players?.length) {
@@ -554,6 +600,9 @@ io.on('connection', (socket) => {
             roomCode: room.code,
             players: serializeV2Players(room.players)
           });
+          if (binding.rebound) {
+            await emitPresenceUpdate(room);
+          }
 
           callback({ success: true, players: serializeV2Players(room.players) });
         } catch (error) {
@@ -593,10 +642,13 @@ io.on('connection', (socket) => {
             return;
           }
 
-          const player = room.players.find(entry => entry.id === session.playerId);
-          if (!player || !player.connected || player.socketId !== socket.id) {
-            callback({ success: false, error: 'Session is not bound to this connection.' });
+          const binding = await ensureSessionBoundToSocket(store, room, session, socket);
+          if (!binding.player) {
+            callback({ success: false, error: binding.error || 'Session is not bound to this connection.' });
             return;
+          }
+          if (binding.rebound) {
+            await emitPresenceUpdate(room);
           }
 
           const result = actionProcessor.process({
@@ -648,10 +700,13 @@ io.on('connection', (socket) => {
           return;
         }
 
-        const player = room.players.find(entry => entry.id === session.playerId);
-        if (!player || !player.connected || player.socketId !== socket.id) {
-          callback?.({ success: false, error: 'Session is not bound to this connection.' });
+        const binding = await ensureSessionBoundToSocket(store, room, session, socket);
+        if (!binding.player) {
+          callback?.({ success: false, error: binding.error || 'Session is not bound to this connection.' });
           return;
+        }
+        if (binding.rebound) {
+          await emitPresenceUpdate(room);
         }
 
         io.to(socket.id).emit('room-snapshot-v2', buildSnapshot(room, session.playerId));

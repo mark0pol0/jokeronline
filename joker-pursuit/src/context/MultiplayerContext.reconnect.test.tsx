@@ -184,6 +184,56 @@ describe('MultiplayerContext reconnect behavior', () => {
     });
   });
 
+  test('reconciles local player identity from room snapshot selfPlayerId', async () => {
+    const socket = socketContextState.socket as ReturnType<typeof createMockSocket>;
+    mockedJoinRoomV2.mockResolvedValue({
+      success: true,
+      roomId: 'room-join',
+      roomCode: 'ROOM42',
+      playerId: 'player-stale',
+      sessionToken: 'token-join',
+      players: [
+        { id: 'player-1', name: 'Host', color: '' },
+        { id: 'player-2', name: 'Guest', color: '' }
+      ],
+      stateVersion: 2,
+      isHost: false
+    });
+
+    render(
+      <MultiplayerProvider>
+        <ContextProbe />
+      </MultiplayerProvider>
+    );
+
+    await act(async () => {
+      await contextValue!.joinRoom('room42', 'Guest');
+    });
+
+    expect(contextValue!.playerId).toBe('player-stale');
+
+    act(() => {
+      socket.emitEvent('room-snapshot-v2', {
+        roomCode: 'ROOM42',
+        roomId: 'room-join',
+        stateVersion: 3,
+        gameState: null,
+        players: [
+          { id: 'player-1', name: 'Host', color: '' },
+          { id: 'player-2', name: 'Guest', color: '' }
+        ],
+        playersPresence: {},
+        hostPlayerId: 'player-1',
+        selfPlayerId: 'player-2',
+        isStarted: true
+      });
+    });
+
+    await waitFor(() => {
+      expect(contextValue!.playerId).toBe('player-2');
+    });
+  });
+
   test('clears stored session and shows actionable error on terminal rejoin failure', async () => {
     const storedPayload = JSON.stringify({
       roomCode: 'ABCD12',

@@ -226,4 +226,23 @@ describe('MultiplayerGameController', () => {
 
     expect(screen.getByText('Waiting for Guest')).toBeInTheDocument();
   });
+
+  test('uses snapshot selfPlayerId to recover turn ownership when local playerId is stale', () => {
+    const socket = mockMultiplayerState({
+      playerId: 'player-1'
+    });
+
+    render(<MultiplayerGameController onBack={jest.fn()} />);
+
+    act(() => {
+      socket.emitEvent('room-snapshot-v2', {
+        roomCode: 'ABCD12',
+        stateVersion: 2,
+        selfPlayerId: 'player-2',
+        gameState: createSerializableGameState(1)
+      });
+    });
+
+    expect(screen.getByText("It's your turn!")).toBeInTheDocument();
+  });
 });
