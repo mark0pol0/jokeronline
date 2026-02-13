@@ -5,6 +5,7 @@ import HomeMenu from './components/HomeMenu/HomeMenu';
 import SetupScreen from './components/SetupScreen/SetupScreen';
 import OnlineMenu from './components/Multiplayer/OnlineMenu';
 import MultiplayerGameController from './components/Multiplayer/MultiplayerGameController';
+import PWAInstallPrompt from './components/PWA/PWAInstallPrompt';
 import { useMultiplayer } from './context/MultiplayerContext';
 
 // Available colors for player selection
@@ -137,6 +138,7 @@ const App: React.FC = () => {
 
   return (
     <div className="App">
+      {gamePhase !== 'playing' && gamePhase !== 'online-playing' && <PWAInstallPrompt />}
       {gamePhase === 'home' && (
         <HomeMenu 
           onStartGame={() => setGamePhase('setup')} 

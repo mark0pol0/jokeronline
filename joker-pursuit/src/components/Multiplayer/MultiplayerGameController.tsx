@@ -296,6 +296,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const [snapshotHydrationFailed, setSnapshotHydrationFailed] = useState(false);
   const [snapshotSelfPlayerId, setSnapshotSelfPlayerId] = useState<string | null>(null);
   const [returnLinkCopyStatus, setReturnLinkCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [isMatchMenuOpen, setIsMatchMenuOpen] = useState(false);
   const latestSnapshotVersionRef = useRef<number>(0);
   const gameStateRef = useRef<GameState | null>(null);
   const effectivePlayerId = snapshotSelfPlayerId || playerId;
@@ -1101,17 +1102,29 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       
       return (
         <div className="multiplayer-game-container">
-          <div className="game-header">
+          <div className={`game-header ${isMatchMenuOpen ? 'expanded' : ''}`}>
             <div className="game-header-main-row">
               <div className="room-meta">
                 <span className="room-meta-label">Room</span>
                 <span className="room-code-chip">{roomCode}</span>
               </div>
+              <button
+                type="button"
+                className="mobile-match-menu-button"
+                onClick={() => setIsMatchMenuOpen(previous => !previous)}
+                aria-expanded={isMatchMenuOpen}
+              >
+                {isMatchMenuOpen ? 'Hide Menu' : 'Match Menu'}
+              </button>
               <div className="header-action-group">
                 <button
                   type="button"
                   className="skeuomorphic-button secondary-button header-action-button"
-                  onClick={handleCopyReturnLink}
+                  onClick={() => {
+                    handleCopyReturnLink().finally(() => {
+                      setIsMatchMenuOpen(false);
+                    });
+                  }}
                 >
                   <span className="button-text">Copy My Return Link</span>
                   <div className="button-shine"></div>
@@ -1123,6 +1136,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
                     requestSync().catch((error: Error) => {
                       console.error('Failed to sync during match', error);
                     });
+                    setIsMatchMenuOpen(false);
                   }}
                 >
                   <span className="button-text">Sync</span>
@@ -1131,7 +1145,10 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
                 <button
                   type="button"
                   className="skeuomorphic-button secondary-button header-action-button leave-action-button"
-                  onClick={handleLeaveGame}
+                  onClick={() => {
+                    setIsMatchMenuOpen(false);
+                    handleLeaveGame();
+                  }}
                 >
                   <span className="button-text">Leave Game</span>
                   <div className="button-shine"></div>

@@ -823,51 +823,71 @@
 
 @media (max-width: 700px) {
   .game-container {
-    --hand-dock-reserve: 166px;
+    --hand-dock-reserve: 136px;
   }
 
   .top-panel {
-    min-height: 68px;
-    padding: 8px 10px;
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 6px);
+    left: 8px;
+    right: 8px;
+    z-index: 28;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    grid-template-columns: 1fr;
   }
 
-  .dev-switch {
-    width: 120px;
-    height: 46px;
+  .top-panel-spacer {
+    display: none;
   }
 
-  .dev-switch input:checked + .dev-slider::before {
-    transform: translateX(76px);
+  .dev-tools {
+    display: none;
   }
 
   .player-turn-indicator {
-    font-size: 0.92rem;
-    padding: 8px 10px;
+    justify-self: start;
+    max-width: min(240px, 100%);
+    font-size: 0.78rem;
+    padding: 7px 10px;
   }
 
   .zoom-controls {
-    top: auto;
-    bottom: calc(var(--hand-dock-reserve) + 6px);
+    top: calc(env(safe-area-inset-top, 0px) + 56px);
+    bottom: auto;
+    right: 8px;
     transform: none;
-    grid-auto-flow: column;
-    align-items: center;
-    right: 50%;
-    translate: 50% 0;
-    padding: 8px;
+    grid-auto-flow: row;
+    align-items: stretch;
+    padding: 6px;
+    gap: 6px;
+    border-radius: 12px;
   }
 
   .zoom-level {
-    min-width: 54px;
+    min-width: 0;
+    font-size: 0.66rem;
   }
 
   .zoom-button {
-    width: 44px;
-    height: 44px;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    font-size: 1.05rem;
+  }
+
+  .zoom-button.reset-zoom {
+    margin-top: 0;
   }
 
   .card-controls-container {
-    bottom: calc(var(--hand-dock-reserve) + 8px);
-    width: calc(100% - 12px);
+    bottom: calc(var(--hand-dock-reserve) + 6px);
+    width: calc(100% - 8px);
   }
 
   .castle-choice-controls {
@@ -883,7 +903,7 @@
   }
 
   .bottom-panel {
-    padding: 8px 8px calc(10px + env(safe-area-inset-bottom));
+    padding: 6px 6px calc(8px + env(safe-area-inset-bottom));
   }
 
   .welcome-modal {

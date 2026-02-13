@@ -3687,64 +3687,61 @@ const GameController: React.FC<GameControllerProps> = ({
   return (
     <div className="game-controller">
       <div className="game-container">
-        {/* NEW TOP PANEL for turn indicator and controls */}
-        <div className="top-panel">
-          {/* Empty div for spacing */}
-          <div className="top-panel-spacer" aria-hidden="true"></div>
-          
-          {/* Player turn indicator */}
-          <div 
-            className="player-turn-indicator"
-            style={{ '--turn-color': currentPlayerColor } as React.CSSProperties}
-          >
-            {currentPlayer?.name}'s Turn
-          </div>
-          
-          {/* Dev Mode Toggle */}
-          <div className="dev-tools">
-            <div className="dev-mode-container">
-              <label className="dev-switch">
-                <input 
-                  type="checkbox" 
-                  checked={devMode} 
-                  data-testid="dev-mode-toggle"
-                  onChange={() => setDevMode(!devMode)} 
-                />
-                <span className="dev-slider"></span>
-                <span className="dev-label">Dev Mode</span>
-              </label>
-              
-              {/* Dev mode controls */}
-              {devMode && gameState.phase === 'playing' && (
-                <div className="dev-controls-group">
-                  <button
-                    className="dev-button shuffle-hand-button"
-                    data-testid="dev-shuffle-hand"
-                    onClick={handleShuffleHand}
-                  >
-                    Shuffle Hand
-                  </button>
-                  
-                  <button
-                    className={`dev-button move-pegs-button ${movePegsMode ? 'active' : ''}`}
-                    data-testid="dev-edit-pegs"
-                    onClick={() => setMovePegsMode(!movePegsMode)}
-                  >
-                    {movePegsMode ? 'Exit Peg Edit Mode' : 'Edit Peg Positions'}
-                  </button>
-                  
-                  <button
-                    className={`dev-button preserve-play-button ${preservePlayMode ? 'active' : ''}`}
-                    data-testid="dev-auto-end-turn"
-                    onClick={() => setPreservePlayMode(!preservePlayMode)}
-                  >
-                    {preservePlayMode ? 'Auto End Turn Off' : 'Auto End Turn On'}
-                  </button>
-                </div>
-              )}
+        {!isMultiplayer && (
+          <div className="top-panel">
+            <div className="top-panel-spacer" aria-hidden="true"></div>
+
+            <div
+              className="player-turn-indicator"
+              style={{ '--turn-color': currentPlayerColor } as React.CSSProperties}
+            >
+              {currentPlayer?.name}'s Turn
+            </div>
+
+            <div className="dev-tools">
+              <div className="dev-mode-container">
+                <label className="dev-switch">
+                  <input
+                    type="checkbox"
+                    checked={devMode}
+                    data-testid="dev-mode-toggle"
+                    onChange={() => setDevMode(!devMode)}
+                  />
+                  <span className="dev-slider"></span>
+                  <span className="dev-label">Dev Mode</span>
+                </label>
+
+                {devMode && gameState.phase === 'playing' && (
+                  <div className="dev-controls-group">
+                    <button
+                      className="dev-button shuffle-hand-button"
+                      data-testid="dev-shuffle-hand"
+                      onClick={handleShuffleHand}
+                    >
+                      Shuffle Hand
+                    </button>
+
+                    <button
+                      className={`dev-button move-pegs-button ${movePegsMode ? 'active' : ''}`}
+                      data-testid="dev-edit-pegs"
+                      onClick={() => setMovePegsMode(!movePegsMode)}
+                    >
+                      {movePegsMode ? 'Exit Peg Edit Mode' : 'Edit Peg Positions'}
+                    </button>
+
+                    <button
+                      className={`dev-button preserve-play-button ${preservePlayMode ? 'active' : ''}`}
+                      data-testid="dev-auto-end-turn"
+                      onClick={() => setPreservePlayMode(!preservePlayMode)}
+                    >
+                      {preservePlayMode ? 'Auto End Turn Off' : 'Auto End Turn On'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
         
         {/* Main game board area */}
         <div className="board-area">

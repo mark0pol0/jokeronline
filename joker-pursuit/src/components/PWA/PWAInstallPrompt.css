@@ -1,0 +1,107 @@
+.pwa-install-banner {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  z-index: 1200;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.pwa-install-content {
+  width: min(560px, 100%);
+  border-radius: 14px;
+  border: 1px solid rgba(193, 220, 240, 0.34);
+  background: linear-gradient(160deg, rgba(10, 20, 30, 0.94), rgba(8, 16, 24, 0.9));
+  box-shadow: 0 14px 26px rgba(2, 8, 14, 0.46);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.pwa-install-title {
+  margin: 0;
+  color: #eff8ff;
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.pwa-install-text {
+  margin: 0;
+  color: rgba(218, 235, 248, 0.92);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.pwa-install-steps {
+  margin: 0;
+  padding-left: 18px;
+  color: rgba(226, 240, 250, 0.92);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.pwa-install-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pwa-install-button,
+.pwa-later-button {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(201, 225, 242, 0.34);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.pwa-install-button {
+  background: linear-gradient(160deg, #2f8b63, #266f4f);
+  color: #f8fffc;
+  box-shadow: 0 8px 12px rgba(17, 50, 37, 0.36);
+}
+
+.pwa-install-button:disabled {
+  opacity: 0.7;
+}
+
+.pwa-later-button {
+  background: linear-gradient(160deg, rgba(197, 221, 238, 0.18), rgba(168, 194, 214, 0.12));
+  color: #dcecf8;
+}
+
+@media (max-width: 680px) {
+  .pwa-install-banner {
+    left: 8px;
+    right: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+  }
+
+  .pwa-install-content {
+    padding: 10px;
+    gap: 6px;
+  }
+
+  .pwa-install-title {
+    font-size: 0.88rem;
+  }
+
+  .pwa-install-text,
+  .pwa-install-steps {
+    font-size: 0.76rem;
+  }
+
+  .pwa-install-button,
+  .pwa-later-button {
+    min-height: 34px;
+    padding: 0 10px;
+    font-size: 0.76rem;
+  }
+}

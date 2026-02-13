@@ -767,6 +767,20 @@
   box-shadow: 0 18px 28px rgba(4, 10, 18, 0.34);
 }
 
+.mobile-match-menu-button {
+  display: none;
+  min-height: 34px;
+  min-width: 100px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(189, 218, 239, 0.36);
+  background: linear-gradient(160deg, rgba(197, 222, 240, 0.2), rgba(175, 202, 223, 0.14));
+  color: #e7f3fc;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
 .game-header-main-row {
   display: flex;
   align-items: center;
@@ -1158,39 +1172,112 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .game-header {
+    top: calc(env(safe-area-inset-top, 0px) + 6px);
+    left: 6px;
+    right: 6px;
+    transform: none;
+    width: auto;
+    padding: 8px;
+    border-radius: 12px;
+  }
+
   .game-header-main-row {
-    flex-direction: column;
-    align-items: stretch;
+    margin-bottom: 0;
+    align-items: center;
     gap: 8px;
   }
 
-  .header-action-group {
+  .mobile-match-menu-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .game-header:not(.expanded) .header-action-group,
+  .game-header:not(.expanded) .helper-text,
+  .game-header:not(.expanded) .game-player-list {
+    display: none;
+  }
+
+  .game-header.expanded .game-header-main-row {
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+
+  .game-header.expanded .header-action-group {
     width: 100%;
-    justify-content: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 
   .header-action-button {
     width: 100%;
   }
 
-  .game-player-list {
+  .game-header.expanded .game-player-list {
     grid-template-columns: 1fr;
+    max-height: 28vh;
+    overflow: auto;
+    padding-right: 2px;
   }
 
   .player-waiting-overlay {
     position: absolute;
-    top: 236px;
+    top: calc(env(safe-area-inset-top, 0px) + 62px);
     left: 8px;
-    width: min(300px, calc(100% - 16px));
+    width: min(204px, calc(100% - 16px));
     margin: 0;
+    border-radius: 10px;
+  }
+
+  .player-waiting-message {
+    padding: 8px 10px;
+  }
+
+  .player-waiting-message h3 {
+    font-size: 0.78rem;
+  }
+
+  .player-waiting-message p {
+    margin-top: 4px;
+    font-size: 0.67rem;
   }
 
   .opponent-play-panel {
     position: absolute;
     left: 8px;
-    top: 348px;
-    width: min(190px, calc(100% - 16px));
+    top: calc(env(safe-area-inset-top, 0px) + 126px);
+    width: 110px;
     margin: 0;
     max-width: none;
+    border-radius: 8px;
+    padding: 6px;
+    gap: 5px;
+  }
+
+  .opponent-play-label {
+    font-size: 0.62rem;
+  }
+
+  .opponent-play-card {
+    width: 50px;
+    height: 70px;
+    border-radius: 7px;
+    padding: 4px;
+  }
+
+  .opponent-play-card-top,
+  .opponent-play-card-bottom {
+    font-size: 0.56rem;
+  }
+
+  .opponent-play-card-center {
+    font-size: 1.05rem;
+  }
+
+  .opponent-play-caption {
+    font-size: 0.64rem;
   }
 }

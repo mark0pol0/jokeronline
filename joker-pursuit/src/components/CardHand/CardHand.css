@@ -159,14 +159,35 @@
 @media (max-width: 700px) {
   .card-hand {
     justify-content: flex-start;
-    padding: 12px 8px 2px;
+    gap: 4px;
+    padding: 8px 4px 0;
+  }
+
+  .playing-card {
+    width: clamp(50px, 15vw, 64px);
+    height: clamp(74px, 22vw, 94px);
+    border-radius: 10px;
+    padding: 5px;
+  }
+
+  .card-rank,
+  .card-suit {
+    font-size: clamp(0.7rem, 2.8vw, 0.86rem);
+  }
+
+  .card-center {
+    font-size: clamp(1.1rem, 4.2vw, 1.45rem);
+  }
+
+  .card-center.joker {
+    font-size: clamp(0.64rem, 2.4vw, 0.76rem);
   }
 
   .playing-card:hover:not(.disabled):not(.hidden-card) {
-    transform: translateY(-6px);
+    transform: translateY(-4px);
   }
 
   .playing-card.selected {
-    transform: translateY(-8px);
+    transform: translateY(-6px);
   }
 }
