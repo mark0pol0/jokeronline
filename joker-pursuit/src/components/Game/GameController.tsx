@@ -806,6 +806,26 @@ const GameController: React.FC<GameControllerProps> = ({
     setSevenCardState({ state: 'INITIAL', isSplit: false });
   }, []);
 
+  const commitGameOverState = useCallback((terminalState: GameState) => {
+    const gameOverState: GameState = {
+      ...terminalState,
+      phase: 'gameOver'
+    };
+
+    if (isMultiplayer && onMove) {
+      setGameState(gameOverState);
+      onMove({
+        type: 'play_move',
+        nextGameState: gameOverState
+      });
+    } else {
+      updateGameState(gameOverState);
+    }
+
+    clearInteractionState();
+    setPromptMessage('Game Over!');
+  }, [clearInteractionState, isMultiplayer, onMove, updateGameState]);
+
   // Keep multiplayer snapshots authoritative without remounting the controller.
   useEffect(() => {
     if (!isMultiplayer || !gameStateOverride) {
@@ -1225,22 +1245,7 @@ const GameController: React.FC<GameControllerProps> = ({
       }
 
       if (isGameOver(nextState)) {
-        const gameOverState: GameState = {
-          ...nextState,
-          phase: 'gameOver'
-        };
-
-        if (isMultiplayer && onMove) {
-          setGameState(gameOverState);
-          onMove({
-            type: 'play_move',
-            nextGameState: gameOverState
-          });
-        } else {
-          updateGameState(gameOverState);
-        }
-
-        clearInteractionState();
+        commitGameOverState(nextState);
         return {
           ok: true,
           value: {
@@ -2264,7 +2269,7 @@ const GameController: React.FC<GameControllerProps> = ({
       
       // Check if game is over
       if (isGameOver(result.newState)) {
-        setGameState({...result.newState, phase: 'gameOver'});
+        commitGameOverState(result.newState);
         return;
       }
       
@@ -3451,10 +3456,7 @@ const GameController: React.FC<GameControllerProps> = ({
           
           // Check if game is over after move
           if (isGameOver(newState)) {
-            setGameState({
-              ...newState,
-              phase: 'gameOver'
-            });
+            commitGameOverState(newState);
             return;
           }
           
@@ -3495,10 +3497,7 @@ const GameController: React.FC<GameControllerProps> = ({
       
       // Check if game is over after move
       if (isGameOver(newState)) {
-        setGameState({
-          ...newState,
-          phase: 'gameOver'
-        });
+        commitGameOverState(newState);
         return;
       }
       
@@ -3519,7 +3518,7 @@ const GameController: React.FC<GameControllerProps> = ({
   ) => {
     // Check if the game is over
     if (isGameOver(currentState)) {
-      setPromptMessage("Game Over!");
+      commitGameOverState(currentState);
       return;
     }
 

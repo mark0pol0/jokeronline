@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MultiplayerGameController from './MultiplayerGameController';
 import { useMultiplayer } from '../../context/MultiplayerContext';
 import { createBoard } from '../../models/BoardModel';
@@ -10,8 +10,24 @@ jest.mock('../../context/MultiplayerContext', () => ({
 }));
 
 jest.mock('../Game/GameController', () => {
-  return function MockGameController() {
-    return <div data-testid="mock-game-controller">Game Controller</div>;
+  return function MockGameController(props: any) {
+    return (
+      <div
+        data-testid="mock-game-controller"
+        data-current-turn={String(props.isCurrentPlayerTurn)}
+      >
+        Game Controller
+        <button
+          type="button"
+          onClick={() => props.onMove?.({
+            type: 'play_move',
+            nextGameState: props.gameStateOverride
+          })}
+        >
+          Submit Mock Move
+        </button>
+      </div>
+    );
   };
 });
 
@@ -244,5 +260,61 @@ describe('MultiplayerGameController', () => {
     });
 
     expect(screen.getByText("It's your turn!")).toBeInTheDocument();
+  });
+
+  test('locks local turn controls while a multiplayer action submit is in flight', async () => {
+    let resolveSubmit: () => void = () => {};
+    const submitAction = jest.fn().mockImplementation(() => new Promise<void>((resolve) => {
+      resolveSubmit = resolve;
+    }));
+    const requestSync = jest.fn().mockResolvedValue(undefined);
+    const socket = mockMultiplayerState({
+      playerId: 'player-1',
+      stateVersion: 2,
+      submitAction,
+      requestSync
+    });
+
+    render(<MultiplayerGameController onBack={jest.fn()} />);
+
+    act(() => {
+      socket.emitEvent('room-snapshot-v2', {
+        roomCode: 'ABCD12',
+        stateVersion: 2,
+        gameState: createSerializableGameState(0)
+      });
+    });
+
+    expect(screen.getByTestId('mock-game-controller')).toHaveAttribute('data-current-turn', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Mock Move' }));
+
+    await waitFor(() => {
+      expect(submitAction).toHaveBeenCalledWith(
+        2,
+        expect.objectContaining({
+          type: 'play_move',
+          nextGameState: expect.objectContaining({
+            currentPlayerIndex: 0
+          })
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-game-controller')).toHaveAttribute('data-current-turn', 'false');
+    });
+
+    act(() => {
+      resolveSubmit();
+    });
+
+    await waitFor(() => {
+      expect(requestSync).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-game-controller')).toHaveAttribute('data-current-turn', 'true');
+    });
   });
 });

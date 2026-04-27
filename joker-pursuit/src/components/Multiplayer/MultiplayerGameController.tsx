@@ -297,8 +297,10 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   const [snapshotSelfPlayerId, setSnapshotSelfPlayerId] = useState<string | null>(null);
   const [returnLinkCopyStatus, setReturnLinkCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [isMatchMenuOpen, setIsMatchMenuOpen] = useState(false);
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const latestSnapshotVersionRef = useRef<number>(0);
   const gameStateRef = useRef<GameState | null>(null);
+  const submitInFlightRef = useRef(false);
   const effectivePlayerId = snapshotSelfPlayerId || playerId;
   const isWaitingForStartedGameSnapshot =
     isOnlineMode &&
@@ -528,6 +530,11 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
 
   // Handle player making a move
   const handleMove = async (moveData: any) => {
+    if (submitInFlightRef.current) {
+      console.warn('[multiplayer] Ignoring move while another submit is still in flight.');
+      return;
+    }
+
     const isLocalPlayersTurn = Boolean(
       gameState?.players?.[gameState.currentPlayerIndex]?.id &&
       gameState.players[gameState.currentPlayerIndex].id === effectivePlayerId
@@ -551,16 +558,25 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
         ? moveData.type
         : 'play_move';
 
+    submitInFlightRef.current = true;
+    setIsSubmittingAction(true);
+
     try {
       await submitAction(getCurrentBaseVersion(), {
         type: actionType,
         nextGameState
       });
+      requestSync().catch((syncError: Error) => {
+        console.error('Failed to confirm latest snapshot after move submit', syncError);
+      });
     } catch (error) {
       console.error('❌ Error sending move to server:', error);
-      requestSync().catch((syncError: Error) => {
+      await requestSync().catch((syncError: Error) => {
         console.error('Failed to recover by syncing after move submit failure', syncError);
       });
+    } finally {
+      submitInFlightRef.current = false;
+      setIsSubmittingAction(false);
     }
   };
 
@@ -1075,6 +1091,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       const recentOpponentMove = recentMove && recentMove.playerId !== effectivePlayerId ? recentMove : null;
       
       const isCurrentPlayerTurn: boolean = !!(currentPlayer && currentPlayer.id === effectivePlayerId);
+      const canActOnCurrentTurn = isCurrentPlayerTurn && !isSubmittingAction;
       const localPlayer = gameState.players.find((player) => player.id === effectivePlayerId);
       const activeTurnColor = currentPlayer?.color
         || (currentPlayer?.id ? selectedColors[currentPlayer.id] : undefined)
@@ -1090,6 +1107,7 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
       console.log('🎮 Rendering game with current player turn:', {
         currentPlayerIndex,
         isCurrentPlayerTurn,
+        isSubmittingAction,
         myId: effectivePlayerId
       });
 
@@ -1201,9 +1219,13 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
             }
           >
             <div className="player-waiting-message">
-              <h3>{isCurrentPlayerTurn ? "It's your turn!" : `Waiting for ${activeTurnPlayerName}`}</h3>
+              <h3>
+                {isCurrentPlayerTurn
+                  ? (isSubmittingAction ? 'Syncing your move...' : "It's your turn!")
+                  : `Waiting for ${activeTurnPlayerName}`}
+              </h3>
               {isCurrentPlayerTurn ? (
-                <p>Play a card and make your move.</p>
+                <p>{isSubmittingAction ? 'Waiting for the server to confirm.' : 'Play a card and make your move.'}</p>
               ) : (
                 <p>{activeTurnPlayerName} is making a move<span className="loading-dots"></span></p>
               )}
@@ -1249,13 +1271,13 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
             numBoardSections={gameState.players.length}
             playerColors={memoizedPlayerColors}
             isMultiplayer={true}
-              isCurrentPlayerTurn={isCurrentPlayerTurn}
-              onMove={handleMove}
-              gameStateOverride={memoizedGameStateOverride}
-              localPlayerId={effectivePlayerId || undefined}
-              recentMoveHighlight={recentMoveHighlight}
-              onHarnessSyncToServer={handleHarnessSyncToServer}
-              onHarnessCommitStateToServer={handleHarnessCommitStateToServer}
+            isCurrentPlayerTurn={canActOnCurrentTurn}
+            onMove={handleMove}
+            gameStateOverride={memoizedGameStateOverride}
+            localPlayerId={effectivePlayerId || undefined}
+            recentMoveHighlight={recentMoveHighlight}
+            onHarnessSyncToServer={handleHarnessSyncToServer}
+            onHarnessCommitStateToServer={handleHarnessCommitStateToServer}
           />
         </div>
       );

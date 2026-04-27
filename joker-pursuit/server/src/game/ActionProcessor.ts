@@ -13,6 +13,18 @@ const cloneRoom = (room: RoomStateV2): RoomStateV2 =>
 const isNonEmptyObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object';
 
+const hasValidGameOverWinner = (nextState: Record<string, unknown>): boolean => {
+  const winner = nextState.winner;
+  if (!isNonEmptyObject(winner)) {
+    return false;
+  }
+
+  return (
+    typeof winner.playerId === 'string' &&
+    Number.isFinite(Number(winner.teamId))
+  );
+};
+
 export class ActionProcessor {
   process(input: ProcessActionInput): ActionResult {
     const room = cloneRoom(input.room);
@@ -88,8 +100,31 @@ export class ActionProcessor {
 
     // Enforce turn progression for committed turn actions. This blocks
     // stale/split-brain client writes that keep the same active player.
+    // A terminal game-over snapshot is the one valid exception: the final
+    // move may leave currentPlayerIndex unchanged because there is no next turn.
     const nextPlayerIndex = Number((nextState as any).currentPlayerIndex ?? NaN);
-    if (!Number.isFinite(nextPlayerIndex) || nextPlayerIndex === currentPlayerIndex) {
+    if (
+      !Number.isInteger(nextPlayerIndex) ||
+      nextPlayerIndex < 0 ||
+      nextPlayerIndex >= nextState.players.length
+    ) {
+      return {
+        success: false,
+        reason: 'invalid_next_player',
+        room
+      };
+    }
+
+    const isGameOverCommit = (nextState as any).phase === 'gameOver';
+    if (isGameOverCommit && !hasValidGameOverWinner(nextState)) {
+      return {
+        success: false,
+        reason: 'invalid_game_over_state',
+        room
+      };
+    }
+
+    if (!isGameOverCommit && nextPlayerIndex === currentPlayerIndex) {
       return {
         success: false,
         reason: 'turn_not_advanced',
