@@ -345,6 +345,32 @@ describe('GameController discard availability', () => {
     expect(screen.getByRole('button', { name: /No, continue on board/i })).toBeInTheDocument();
   });
 
+  test('prompts for castle entry on regular seven move when both paths are legal', async () => {
+    const gameState = createSevenSplitCastlePromptState();
+
+    render(
+      <GameController
+        playerNames={PLAYER_NAMES}
+        playerTeams={PLAYER_TEAMS}
+        numBoardSections={2}
+        playerColors={PLAYER_COLORS}
+        isMultiplayer
+        isCurrentPlayerTurn
+        localPlayerId="player-1"
+        gameStateOverride={gameState}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('card-p1-7s'));
+    fireEvent.click(screen.getByTestId('seven-option-move'));
+    fireEvent.click(screen.getByTestId('peg-player-1-peg-1'));
+
+    expect(await screen.findByText(/Would you like this peg to go into your castle\?/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Yes, enter castle/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /No, continue on board/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Click on a highlighted space to move your peg/i)).not.toBeInTheDocument();
+  });
+
   test('prompts for castle entry on second half of seven split when both routes are legal', async () => {
     const gameState = createSevenSplitSecondMoveCastleChoiceState();
 

@@ -3120,28 +3120,49 @@ const GameController: React.FC<GameControllerProps> = ({
       setSelectedPegId(pegId);
       
       const moves = getPossibleMoves(gameState, gameState?.players[gameState?.currentPlayerIndex]?.id, selectedCardId);
-      const possibleDestinations = moves
-        .filter(move => move.pegId === pegId)
-        .flatMap(move => move.destinations);
+      const pegMoves = moves.filter(move => move.pegId === pegId);
+      const regularMoves = pegMoves.filter(move => !move.metadata?.castleMovement);
+      const castleMoves = pegMoves.filter(move => move.metadata?.castleMovement);
       
-      Log(`Found ${possibleDestinations.length} possible destinations for regular 7 card move`);
+      Log(`Found ${pegMoves.length} possible moves for regular 7 card move`);
+      Log(`Regular moves: ${regularMoves.length}, Castle moves: ${castleMoves.length}`);
       
-      if (possibleDestinations.length === 0) {
+      if (pegMoves.length === 0) {
         setPromptMessage("No valid moves for this peg with the selected card");
         setSelectedCardId('');
         return;
       }
       
-      if (possibleDestinations.length === 1) {
-        const move = {
-          playerId: gameState?.players[gameState?.currentPlayerIndex]?.id,
-          cardId: selectedCardId,
-          pegId: pegId,
-          from: '',
-          destinations: possibleDestinations
-        };
+      if (castleMoves.length > 0) {
+        const pegSpace = findSpaceForPeg(gameState, pegId);
+        const isAlreadyInCastle = pegSpace && pegSpace.type === 'castle';
         
-        Log(`Applying automatic move with single destination: ${possibleDestinations[0]}`);
+        if (isAlreadyInCastle) {
+          const move = castleMoves[0];
+          Log(`Peg ${pegId} is already in castle - applying 7 card castle move without prompt`);
+          const { newState, bumpMessage } = applyMove(gameState, move);
+          setGameState(newState);
+          setBumpMessage(bumpMessage);
+          setSelectableSpaceIds([]);
+          setPromptMessage("Move applied!");
+          handleEndTurn(newState);
+          return;
+        }
+
+        setCastlePromptState({
+          isActive: true,
+          pegId,
+          regularMove: regularMoves[0],
+          castleMove: castleMoves[0]
+        });
+        setPromptMessage("Would you like this peg to go into your castle?");
+        return;
+      }
+      
+      if (pegMoves.length === 1) {
+        const move = pegMoves[0];
+        
+        Log(`Applying automatic move with single destination: ${move.destinations[0]}`);
         const { newState, bumpMessage } = applyMove(gameState, move);
         setGameState(newState);
         setBumpMessage(bumpMessage);
@@ -3149,6 +3170,7 @@ const GameController: React.FC<GameControllerProps> = ({
         setPromptMessage("Move applied!");
         handleEndTurn(newState);
       } else {
+        const possibleDestinations = pegMoves.flatMap(move => move.destinations);
         setSelectableSpaceIds(possibleDestinations);
         setPromptMessage("Click on a highlighted space to move your peg");
       }
