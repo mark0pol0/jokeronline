@@ -11,6 +11,9 @@
 # production
 /build
 
+# generated harness reports/screenshots
+/reports/harness/
+
 # misc
 .DS_Store
 .env.local
