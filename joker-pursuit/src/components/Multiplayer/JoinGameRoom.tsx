@@ -210,15 +210,17 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
             <div className="room-code-display">
               <h3>Room Code</h3>
               <div className="code-box" data-testid="join-room-code">{connectedRoomCode}</div>
-              <button
-                type="button"
-                onClick={handleCopyReturnLink}
-                className="skeuomorphic-button secondary-button"
-                data-testid="join-room-copy-return-link"
-              >
-                <span className="button-text">Copy My Return Link</span>
-                <div className="button-shine"></div>
-              </button>
+              <div className="room-code-actions single-action">
+                <button
+                  type="button"
+                  onClick={handleCopyReturnLink}
+                  className="skeuomorphic-button secondary-button"
+                  data-testid="join-room-copy-return-link"
+                >
+                  <span className="button-text">Copy My Return Link</span>
+                  <div className="button-shine"></div>
+                </button>
+              </div>
               {copyStatus === 'copied' && (
                 <p className="helper-text">Return link copied to clipboard.</p>
               )}

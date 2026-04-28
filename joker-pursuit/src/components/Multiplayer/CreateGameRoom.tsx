@@ -188,30 +188,32 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
               <h3>Room Code</h3>
               <div className="code-box" data-testid="create-room-code">{roomCode}</div>
               <p>Share this code with your friends to join your game.</p>
-              <button
-                type="button"
-                onClick={handleCopyInviteLink}
-                className="skeuomorphic-button secondary-button"
-                data-testid="create-room-copy-link"
-              >
-                <span className="button-text">Copy Invite Link</span>
-                <div className="button-shine"></div>
-              </button>
+              <div className="room-code-actions">
+                <button
+                  type="button"
+                  onClick={handleCopyInviteLink}
+                  className="skeuomorphic-button secondary-button"
+                  data-testid="create-room-copy-link"
+                >
+                  <span className="button-text">Copy Invite Link</span>
+                  <div className="button-shine"></div>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopyReturnLink}
+                  className="skeuomorphic-button secondary-button"
+                  data-testid="create-room-copy-return-link"
+                >
+                  <span className="button-text">Copy My Return Link</span>
+                  <div className="button-shine"></div>
+                </button>
+              </div>
               {inviteCopyStatus === 'copied' && (
                 <p className="helper-text">Invite link copied to clipboard.</p>
               )}
               {inviteCopyStatus === 'failed' && (
                 <p className="helper-text">Could not copy automatically. Please copy the URL manually.</p>
               )}
-              <button
-                type="button"
-                onClick={handleCopyReturnLink}
-                className="skeuomorphic-button secondary-button"
-                data-testid="create-room-copy-return-link"
-              >
-                <span className="button-text">Copy My Return Link</span>
-                <div className="button-shine"></div>
-              </button>
               {returnCopyStatus === 'copied' && (
                 <p className="helper-text">Your return link copied to clipboard.</p>
               )}
