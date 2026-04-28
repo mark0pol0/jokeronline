@@ -7,6 +7,7 @@ import './MultiplayerStyles.css';
 interface JoinGameRoomProps {
   onBack: () => void;
   initialRoomCode?: string | null;
+  easyMode?: boolean;
 }
 
 const readInitialPlayerName = (): string => {
@@ -18,7 +19,7 @@ const readInitialPlayerName = (): string => {
   return rawName?.trim() || '';
 };
 
-const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) => {
+const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode, easyMode = false }) => {
   const [playerName, setPlayerName] = useState(() => readInitialPlayerName());
   const [roomCode, setRoomCode] = useState(initialRoomCode?.toUpperCase() || '');
   const [isJoining, setIsJoining] = useState(false);
@@ -71,6 +72,10 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
 
   const resolvedHostPlayerId = hostPlayerId || players[0]?.id || null;
   const canSubmitJoin = Boolean(playerName.trim() && roomCode.trim() && isConnected && !isJoining);
+  const hasInviteRoomCode = Boolean(initialRoomCode);
+  const shouldShowAdvancedPlayerBadges = !easyMode || Object.values(playersPresence).some(
+    presence => presence.status !== 'connected'
+  );
 
   const getPresenceLabel = (targetPlayerId: string): string => {
     const presence = playersPresence[targetPlayerId];
@@ -124,9 +129,13 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
   return (
     <div className="multiplayer-shell">
       <div className="multiplayer-container join-room">
-        <ConnectionStatus />
-        <h2>Join Game Room</h2>
-        <p className="multiplayer-lead">Enter your name and room code to join an active match.</p>
+        <ConnectionStatus easyMode={easyMode} />
+        <h2>{easyMode ? 'Join Family Game' : 'Join Game Room'}</h2>
+        <p className="multiplayer-lead">
+          {easyMode
+            ? 'Type your name, then join the game.'
+            : 'Enter your name and room code to join an active match.'}
+        </p>
 
         {!hasJoinedRoom ? (
           <form onSubmit={handleJoinRoom} className="multiplayer-form">
@@ -147,19 +156,26 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
               />
             </div>
 
-            <div className="form-group">
-              <label htmlFor="roomCode">Room Code:</label>
-              <input
-                type="text"
-                id="roomCode"
-                data-testid="join-room-code-input"
-                value={roomCode}
-                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                placeholder="Enter room code"
-                maxLength={6}
-                required
-              />
-            </div>
+            {easyMode && hasInviteRoomCode ? (
+              <div className="easy-room-code-summary">
+                <span className="easy-room-code-label">Room Code</span>
+                <span className="easy-room-code-value" data-testid="join-room-code-input">{roomCode}</span>
+              </div>
+            ) : (
+              <div className="form-group">
+                <label htmlFor="roomCode">Room Code:</label>
+                <input
+                  type="text"
+                  id="roomCode"
+                  data-testid="join-room-code-input"
+                  value={roomCode}
+                  onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                  placeholder="Enter room code"
+                  maxLength={6}
+                  required
+                />
+              </div>
+            )}
 
             {error && (
               <div className="error-message">
@@ -199,7 +215,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
                 data-testid="join-room-submit"
               >
                 <span className="button-text">
-                  {isJoining ? 'Joining...' : isConnected ? 'Join Room' : 'Connecting...'}
+                  {isJoining ? 'Joining...' : isConnected ? (easyMode ? 'Join Game' : 'Join Room') : 'Connecting...'}
                 </span>
                 <div className="button-shine"></div>
               </button>
@@ -207,30 +223,38 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
           </form>
         ) : (
           <div className="waiting-room">
+            {easyMode && (
+              <div className="easy-joined-confirmation" data-testid="join-room-easy-confirmation">
+                <h3>You're in</h3>
+                <p>Keep this page open. The game will start when the host is ready.</p>
+              </div>
+            )}
             <div className="room-code-display">
               <h3>Room Code</h3>
               <div className="code-box" data-testid="join-room-code">{connectedRoomCode}</div>
-              <div className="room-code-actions single-action">
-                <button
-                  type="button"
-                  onClick={handleCopyReturnLink}
-                  className="skeuomorphic-button secondary-button"
-                  data-testid="join-room-copy-return-link"
-                >
-                  <span className="button-text">Copy My Return Link</span>
-                  <div className="button-shine"></div>
-                </button>
-              </div>
-              {copyStatus === 'copied' && (
+              {!easyMode && (
+                <div className="room-code-actions single-action">
+                  <button
+                    type="button"
+                    onClick={handleCopyReturnLink}
+                    className="skeuomorphic-button secondary-button"
+                    data-testid="join-room-copy-return-link"
+                  >
+                    <span className="button-text">Copy My Return Link</span>
+                    <div className="button-shine"></div>
+                  </button>
+                </div>
+              )}
+              {!easyMode && copyStatus === 'copied' && (
                 <p className="helper-text">Return link copied to clipboard.</p>
               )}
-              {copyStatus === 'failed' && (
+              {!easyMode && copyStatus === 'failed' && (
                 <p className="helper-text">Could not copy automatically. Please copy the URL manually.</p>
               )}
             </div>
 
             <div className="waiting-player-list">
-              <h3>Players ({players.length}/8)</h3>
+              <h3>{easyMode ? `Players in the game (${players.length})` : `Players (${players.length}/8)`}</h3>
               <ul>
                 {players.map(player => {
                   const isSelf = player.id === playerId;
@@ -241,11 +265,15 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
                   return (
                     <li key={player.id}>
                       <span className="waiting-player-name">{player.name}</span>
-                      <span className="waiting-player-badges">
-                        {isSelf && <span className="player-badge role-you">You</span>}
-                        {isHostPlayer && <span className="player-badge role-host">Host</span>}
-                        <span className={`player-badge presence-${presenceTone}`}>{presenceLabel}</span>
-                      </span>
+                      {shouldShowAdvancedPlayerBadges && (
+                        <span className="waiting-player-badges">
+                          {isSelf && <span className="player-badge role-you">You</span>}
+                          {!easyMode && isHostPlayer && <span className="player-badge role-host">Host</span>}
+                          {(!easyMode || presenceTone !== 'connected') && (
+                            <span className={`player-badge presence-${presenceTone}`}>{presenceLabel}</span>
+                          )}
+                        </span>
+                      )}
                     </li>
                   );
                 })}

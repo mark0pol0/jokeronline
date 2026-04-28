@@ -183,6 +183,56 @@
   outline: none;
 }
 
+.easy-room-code-summary,
+.easy-joined-confirmation {
+  border-radius: 14px;
+  border: 1px solid rgba(70, 148, 101, 0.36);
+  background: rgba(239, 250, 244, 0.82);
+  padding: 14px;
+  text-align: center;
+  box-shadow: var(--shadow-soft);
+}
+
+.easy-room-code-summary {
+  display: grid;
+  gap: 7px;
+  justify-items: center;
+}
+
+.easy-room-code-label {
+  color: #3f5a4a;
+  font-size: 0.88rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.easy-room-code-value {
+  color: #214b35;
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 6vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.easy-joined-confirmation {
+  display: grid;
+  gap: 6px;
+}
+
+.easy-joined-confirmation h3 {
+  margin: 0;
+  color: #214b35;
+  font-family: var(--font-display);
+  font-size: clamp(1.45rem, 3vw, 1.85rem);
+}
+
+.easy-joined-confirmation p {
+  margin: 0;
+  color: #4c6757;
+  line-height: 1.4;
+}
+
 .error-message {
   display: flex;
   align-items: flex-start;

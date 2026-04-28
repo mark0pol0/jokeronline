@@ -120,6 +120,49 @@ describe('JoinGameRoom', () => {
     expect(screen.getByTestId('join-room-player-name')).toHaveValue('Player One');
   });
 
+  test('easy mode invite link shows simplified guest join form', () => {
+    window.history.replaceState({}, '', '/?room=ABC123&name=Grandma');
+    mockMultiplayerState({
+      roomCode: null,
+      sessionToken: null,
+      playerId: null,
+      players: []
+    });
+
+    render(<JoinGameRoom onBack={jest.fn()} initialRoomCode="ABC123" easyMode />);
+
+    expect(screen.getByText('Join Family Game')).toBeInTheDocument();
+    expect(screen.getByTestId('join-room-player-name')).toHaveValue('Grandma');
+    expect(screen.getByTestId('join-room-code-input')).toHaveTextContent('ABC123');
+    expect(screen.getByRole('button', { name: 'Join Game' })).toBeInTheDocument();
+    expect(screen.queryByText('Configure server')).not.toBeInTheDocument();
+  });
+
+  test('easy mode hides advanced waiting room controls on the happy path', () => {
+    mockMultiplayerState({
+      roomCode: 'ABC123',
+      sessionToken: 'session-token',
+      playerId: 'player-2',
+      hostPlayerId: 'host-1',
+      playersPresence: {
+        'host-1': { playerId: 'host-1', status: 'connected', connected: true },
+        'player-2': { playerId: 'player-2', status: 'connected', connected: true }
+      },
+      players: [
+        { id: 'host-1', name: 'Host Player', color: '' },
+        { id: 'player-2', name: 'Guest', color: '' }
+      ]
+    });
+
+    render(<JoinGameRoom onBack={jest.fn()} initialRoomCode="ABC123" easyMode />);
+
+    expect(screen.getByTestId('join-room-easy-confirmation')).toHaveTextContent("You're in");
+    expect(screen.getByText('Players in the game (2)')).toBeInTheDocument();
+    expect(screen.queryByText('Copy My Return Link')).not.toBeInTheDocument();
+    expect(screen.queryByText('Host')).not.toBeInTheDocument();
+    expect(screen.queryByText('Connected')).not.toBeInTheDocument();
+  });
+
   test('blocks join attempts until the socket is connected', () => {
     const joinRoom = jest.fn();
     mockSocketState({
@@ -140,5 +183,21 @@ describe('JoinGameRoom', () => {
     expect(screen.getByTestId('join-room-submit')).toBeDisabled();
     expect(screen.getByTestId('join-room-connection-gate')).toHaveTextContent('Connecting to the multiplayer server');
     expect(joinRoom).not.toHaveBeenCalled();
+  });
+
+  test('easy mode reveals troubleshooting when disconnected', () => {
+    mockSocketState({
+      isConnected: false,
+      serverUrl: 'https://jokeronline.onrender.com',
+      connectionError: 'websocket error'
+    });
+    mockMultiplayerState();
+
+    render(<JoinGameRoom onBack={jest.fn()} initialRoomCode="ABC123" easyMode />);
+
+    expect(screen.getByText('Connection problem')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Server Settings' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Retry' }).length).toBeGreaterThan(0);
+    expect(screen.getByTestId('join-room-submit')).toBeDisabled();
   });
 });

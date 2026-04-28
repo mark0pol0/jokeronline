@@ -5,9 +5,16 @@ import './HomeMenu.css';
 interface HomeMenuProps {
   onStartGame: () => void;
   onStartOnlineGame: () => void;
+  easyMode: boolean;
+  onToggleEasyMode: () => void;
 }
 
-const HomeMenu: React.FC<HomeMenuProps> = ({ onStartGame, onStartOnlineGame }) => {
+const HomeMenu: React.FC<HomeMenuProps> = ({
+  onStartGame,
+  onStartOnlineGame,
+  easyMode,
+  onToggleEasyMode
+}) => {
   const [floatingElements, setFloatingElements] = useState<FloatingDecorElement[]>([]);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
 
@@ -61,6 +68,24 @@ const HomeMenu: React.FC<HomeMenuProps> = ({ onStartGame, onStartOnlineGame }) =
             <div className="button-shine"></div>
           </button>
         </div>
+
+        <button
+          type="button"
+          className={`easy-mode-toggle ${easyMode ? 'active' : ''}`}
+          aria-pressed={easyMode}
+          data-testid="home-easy-mode-toggle"
+          onClick={onToggleEasyMode}
+        >
+          <span className="easy-mode-toggle-copy">
+            <span className="easy-mode-toggle-title">Easy Mode</span>
+            <span className="easy-mode-toggle-status">
+              {easyMode ? 'Simplified online play is on' : 'Use simpler online screens'}
+            </span>
+          </span>
+          <span className="easy-mode-switch" aria-hidden="true">
+            <span className="easy-mode-knob"></span>
+          </span>
+        </button>
       </div>
 
       {/* How to Play Modal */}

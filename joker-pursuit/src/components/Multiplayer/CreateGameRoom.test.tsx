@@ -98,6 +98,32 @@ describe('CreateGameRoom', () => {
     expect(screen.getByText('Reconnecting')).toBeInTheDocument();
   });
 
+  test('easy mode simplifies host waiting room happy path', () => {
+    mockMultiplayerState({
+      roomCode: 'ABC123',
+      playerId: 'host-1',
+      hostPlayerId: 'host-1',
+      playersPresence: {
+        'host-1': { playerId: 'host-1', status: 'connected', connected: true },
+        'guest-1': { playerId: 'guest-1', status: 'connected', connected: true }
+      },
+      players: [
+        { id: 'host-1', name: 'Host Player', color: '#FF5733' },
+        { id: 'guest-1', name: 'Guest Player', color: '#33A1FF' }
+      ]
+    });
+
+    render(<CreateGameRoom onBack={jest.fn()} easyMode />);
+
+    expect(screen.getByText('Start Family Game')).toBeInTheDocument();
+    expect(screen.getByTestId('create-room-code')).toHaveTextContent('ABC123');
+    expect(screen.getByRole('button', { name: 'Copy Invite' })).toBeInTheDocument();
+    expect(screen.queryByText('Copy My Return Link')).not.toBeInTheDocument();
+    expect(screen.getByText('Players in the game (2)')).toBeInTheDocument();
+    expect(screen.queryByText('Host')).not.toBeInTheDocument();
+    expect(screen.queryByText('Connected')).not.toBeInTheDocument();
+  });
+
   test('blocks create attempts until the socket is connected', () => {
     const createRoom = jest.fn();
     mockSocketState({

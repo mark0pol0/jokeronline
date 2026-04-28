@@ -6,9 +6,10 @@ import './MultiplayerStyles.css';
 
 interface CreateGameRoomProps {
   onBack: () => void;
+  easyMode?: boolean;
 }
 
-const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
+const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack, easyMode = false }) => {
   const [playerName, setPlayerName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [inviteCopyStatus, setInviteCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
@@ -58,6 +59,9 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
     : '';
   const resolvedHostPlayerId = hostPlayerId || players[0]?.id || null;
   const canSubmitCreate = Boolean(playerName.trim() && isConnected && !isCreating);
+  const shouldShowAdvancedPlayerBadges = !easyMode || Object.values(playersPresence).some(
+    presence => presence.status !== 'connected'
+  );
 
   const getPresenceLabel = (targetPlayerId: string): string => {
     const presence = playersPresence[targetPlayerId];
@@ -118,9 +122,13 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
   return (
     <div className="multiplayer-shell">
       <div className="multiplayer-container create-room">
-        <ConnectionStatus />
-        <h2>Create Game Room</h2>
-        <p className="multiplayer-lead">Create a room and share the code with other players.</p>
+        <ConnectionStatus easyMode={easyMode} />
+        <h2>{easyMode ? 'Start Family Game' : 'Create Game Room'}</h2>
+        <p className="multiplayer-lead">
+          {easyMode
+            ? 'Create a room and send the invite to the people playing.'
+            : 'Create a room and share the code with other players.'}
+        </p>
 
         {!roomCode ? (
           <form onSubmit={handleCreateRoom} className="multiplayer-form">
@@ -187,26 +195,32 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
             <div className="room-code-display">
               <h3>Room Code</h3>
               <div className="code-box" data-testid="create-room-code">{roomCode}</div>
-              <p>Share this code with your friends to join your game.</p>
-              <div className="room-code-actions">
+              <p>
+                {easyMode
+                  ? 'Send this invite to everyone who is playing.'
+                  : 'Share this code with your friends to join your game.'}
+              </p>
+              <div className={`room-code-actions ${easyMode ? 'single-action' : ''}`}>
                 <button
                   type="button"
                   onClick={handleCopyInviteLink}
                   className="skeuomorphic-button secondary-button"
                   data-testid="create-room-copy-link"
                 >
-                  <span className="button-text">Copy Invite Link</span>
+                  <span className="button-text">{easyMode ? 'Copy Invite' : 'Copy Invite Link'}</span>
                   <div className="button-shine"></div>
                 </button>
-                <button
-                  type="button"
-                  onClick={handleCopyReturnLink}
-                  className="skeuomorphic-button secondary-button"
-                  data-testid="create-room-copy-return-link"
-                >
-                  <span className="button-text">Copy My Return Link</span>
-                  <div className="button-shine"></div>
-                </button>
+                {!easyMode && (
+                  <button
+                    type="button"
+                    onClick={handleCopyReturnLink}
+                    className="skeuomorphic-button secondary-button"
+                    data-testid="create-room-copy-return-link"
+                  >
+                    <span className="button-text">Copy My Return Link</span>
+                    <div className="button-shine"></div>
+                  </button>
+                )}
               </div>
               {inviteCopyStatus === 'copied' && (
                 <p className="helper-text">Invite link copied to clipboard.</p>
@@ -214,16 +228,16 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
               {inviteCopyStatus === 'failed' && (
                 <p className="helper-text">Could not copy automatically. Please copy the URL manually.</p>
               )}
-              {returnCopyStatus === 'copied' && (
+              {!easyMode && returnCopyStatus === 'copied' && (
                 <p className="helper-text">Your return link copied to clipboard.</p>
               )}
-              {returnCopyStatus === 'failed' && (
+              {!easyMode && returnCopyStatus === 'failed' && (
                 <p className="helper-text">Could not copy automatically. Please copy the URL manually.</p>
               )}
             </div>
 
             <div className="waiting-player-list">
-              <h3>Players ({players.length}/8)</h3>
+              <h3>{easyMode ? `Players in the game (${players.length})` : `Players (${players.length}/8)`}</h3>
               <ul>
                 {players.map(player => {
                   const isSelf = player.id === playerId;
@@ -234,11 +248,15 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
                   return (
                     <li key={player.id}>
                       <span className="waiting-player-name">{player.name}</span>
-                      <span className="waiting-player-badges">
-                        {isSelf && <span className="player-badge role-you">You</span>}
-                        {isHostPlayer && <span className="player-badge role-host">Host</span>}
-                        <span className={`player-badge presence-${presenceTone}`}>{presenceLabel}</span>
-                      </span>
+                      {shouldShowAdvancedPlayerBadges && (
+                        <span className="waiting-player-badges">
+                          {isSelf && <span className="player-badge role-you">You</span>}
+                          {!easyMode && isHostPlayer && <span className="player-badge role-host">Host</span>}
+                          {(!easyMode || presenceTone !== 'connected') && (
+                            <span className={`player-badge presence-${presenceTone}`}>{presenceLabel}</span>
+                          )}
+                        </span>
+                      )}
                     </li>
                   );
                 })}

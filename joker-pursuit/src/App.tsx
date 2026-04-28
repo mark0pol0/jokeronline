@@ -21,6 +21,7 @@ const PLAYER_COLORS = [
 ];
 
 type GamePhase = 'home' | 'setup' | 'playing' | 'online' | 'online-playing';
+const EASY_MODE_STORAGE_KEY = 'joker-pursuit.easy-mode';
 
 const getInitialLinkRoomCode = (): string | null => {
   if (typeof window === 'undefined') {
@@ -36,11 +37,25 @@ const getInitialLinkRoomCode = (): string | null => {
   return normalized || null;
 };
 
+const getInitialEasyMode = (): boolean => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem(EASY_MODE_STORAGE_KEY) === 'true';
+  } catch (error) {
+    console.error('Failed to read easy mode preference', error);
+    return false;
+  }
+};
+
 // Main App component
 const App: React.FC = () => {
   // Get multiplayer state
   const { isGameStarted, isOnlineMode } = useMultiplayer();
   const [linkRoomCode] = useState<string | null>(() => getInitialLinkRoomCode());
+  const [easyMode, setEasyMode] = useState<boolean>(() => getInitialEasyMode());
   
   // State
   const [gamePhase, setGamePhase] = useState<GamePhase>('home');
@@ -68,6 +83,18 @@ const App: React.FC = () => {
       setGamePhase('online');
     }
   }, [linkRoomCode, gamePhase]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(EASY_MODE_STORAGE_KEY, easyMode ? 'true' : 'false');
+    } catch (error) {
+      console.error('Failed to persist easy mode preference', error);
+    }
+  }, [easyMode]);
 
   const addPlayer = () => {
     if (playerNames.length < 8) {
@@ -143,6 +170,8 @@ const App: React.FC = () => {
         <HomeMenu 
           onStartGame={() => setGamePhase('setup')} 
           onStartOnlineGame={handleStartOnlineGame}
+          easyMode={easyMode}
+          onToggleEasyMode={() => setEasyMode(current => !current)}
         />
       )}
       {gamePhase === 'setup' && (
@@ -170,7 +199,11 @@ const App: React.FC = () => {
         />
       )}
       {gamePhase === 'online' && (
-        <OnlineMenu onBack={handleReturnToHome} initialJoinRoomCode={linkRoomCode} />
+        <OnlineMenu
+          onBack={handleReturnToHome}
+          initialJoinRoomCode={linkRoomCode}
+          easyMode={easyMode}
+        />
       )}
       {gamePhase === 'online-playing' && (
         <MultiplayerGameController onBack={handleReturnToHome} />
