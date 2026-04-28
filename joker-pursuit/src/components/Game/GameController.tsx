@@ -3858,6 +3858,7 @@ const GameController: React.FC<GameControllerProps> = ({
           
           {/* Add zoom controls */}
           <div className="zoom-controls">
+            <div className="zoom-control-label">Zoom</div>
             <button 
               className={`zoom-button ${isPinchActive ? 'disabled' : ''}`} 
               onClick={handleZoomIn}

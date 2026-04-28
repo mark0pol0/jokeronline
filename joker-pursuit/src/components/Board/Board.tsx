@@ -1274,39 +1274,42 @@ const Board: React.FC<BoardProps> = ({
       }}
     >
       <div className="board-orientation-controls" aria-label="Board orientation controls">
-        <button
-          type="button"
-          className="board-orientation-button"
-          onClick={rotateBoardLeft}
-          onMouseDown={(event) => event.stopPropagation()}
-          onTouchStart={(event) => event.stopPropagation()}
-          title="Rotate board left"
-          aria-label="Rotate board left"
-        >
-          -45
-        </button>
-        <button
-          type="button"
-          className="board-orientation-button wide"
-          onClick={resetBoardOrientation}
-          onMouseDown={(event) => event.stopPropagation()}
-          onTouchStart={(event) => event.stopPropagation()}
-          title="Reset board so your home is south"
-          aria-label="Reset board so your home is south"
-        >
-          Home
-        </button>
-        <button
-          type="button"
-          className="board-orientation-button"
-          onClick={rotateBoardRight}
-          onMouseDown={(event) => event.stopPropagation()}
-          onTouchStart={(event) => event.stopPropagation()}
-          title="Rotate board right"
-          aria-label="Rotate board right"
-        >
-          +45
-        </button>
+        <div className="board-control-label">Board Rotation</div>
+        <div className="board-orientation-button-row">
+          <button
+            type="button"
+            className="board-orientation-button"
+            onClick={rotateBoardLeft}
+            onMouseDown={(event) => event.stopPropagation()}
+            onTouchStart={(event) => event.stopPropagation()}
+            title="Rotate board left"
+            aria-label="Rotate board left"
+          >
+            -45
+          </button>
+          <button
+            type="button"
+            className="board-orientation-button wide"
+            onClick={resetBoardOrientation}
+            onMouseDown={(event) => event.stopPropagation()}
+            onTouchStart={(event) => event.stopPropagation()}
+            title="Reset board so your home is south"
+            aria-label="Reset board so your home is south"
+          >
+            Home
+          </button>
+          <button
+            type="button"
+            className="board-orientation-button"
+            onClick={rotateBoardRight}
+            onMouseDown={(event) => event.stopPropagation()}
+            onTouchStart={(event) => event.stopPropagation()}
+            title="Rotate board right"
+            aria-label="Rotate board right"
+          >
+            +45
+          </button>
+        </div>
       </div>
       <div 
         ref={boardRef}
