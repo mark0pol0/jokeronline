@@ -966,11 +966,6 @@ async function executeStep(step, scenario, session, roles, runtimeNotes) {
         `autoPlaySingleTurn actor=${target.actor} player=${value.playerId || 'unknown'} action=${value.action || 'unknown'} card=${value.cardId || '-'} peg=${value.pegId || '-'} destination=${value.destination || '-'}`
       );
 
-      if (session.mode === 'online' && value.action === 'game_over') {
-        const actorSnapshot = await getHarnessSnapshot(target.page);
-        await invokeHarness(session.hostPage, 'commitGameStateToServer', [actorSnapshot.gameState]);
-      }
-
       if (session.mode === 'online' && step.sync !== false) {
         await invokeHarness(session.hostPage, 'syncToServer');
         await invokeHarness(session.joinerPage, 'syncToServer');
@@ -998,11 +993,6 @@ async function executeStep(step, scenario, session, roles, runtimeNotes) {
         runtimeNotes.push(
           `Auto turn ${turn}: actor=${target.actor} player=${value.playerId || 'unknown'} action=${value.action || 'unknown'} card=${value.cardId || '-'} peg=${value.pegId || '-'} destination=${value.destination || '-'}`
         );
-
-        if (session.mode === 'online' && value.action === 'game_over') {
-          const actorSnapshot = await getHarnessSnapshot(target.page);
-          await invokeHarness(session.hostPage, 'commitGameStateToServer', [actorSnapshot.gameState]);
-        }
 
         if (session.mode === 'online' && step.sync !== false) {
           await invokeHarness(session.hostPage, 'syncToServer');
