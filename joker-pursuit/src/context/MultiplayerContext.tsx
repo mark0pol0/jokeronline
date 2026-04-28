@@ -243,6 +243,21 @@ const isSessionUnboundError = (errorMessage?: string): boolean => {
   return errorMessage.toLowerCase().includes('session is not bound to this connection');
 };
 
+const isTransientSyncError = (errorMessage?: string): boolean => {
+  if (!errorMessage) {
+    return false;
+  }
+
+  const normalized = errorMessage.toLowerCase();
+  return (
+    normalized.includes('timed out waiting for request-sync-v2 response') ||
+    normalized.includes('transport close') ||
+    normalized.includes('websocket error')
+  );
+};
+
+const delay = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
+
 const waitForSocketConnection = async (
   socket: ReturnType<typeof socketIOClient>,
   isConnected: boolean,
@@ -972,9 +987,23 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
       throw new Error('Missing multiplayer session context.');
     }
 
-    try {
+    const runSync = async () => {
       const response = await requestSyncV2(socket, roomCode, sessionToken);
       setStateVersion(prev => Math.max(prev, response.stateVersion || prev));
+    };
+
+    try {
+      try {
+        await runSync();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to sync game state.';
+        if (!isTransientSyncError(message)) {
+          throw error;
+        }
+
+        await delay(400);
+        await runSync();
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to sync game state.';
       if (!isSessionUnboundError(message)) {
@@ -982,8 +1011,7 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
       }
 
       await rebindSessionToCurrentSocket();
-      const response = await requestSyncV2(socket, roomCode, sessionToken);
-      setStateVersion(prev => Math.max(prev, response.stateVersion || prev));
+      await runSync();
     }
   }, [socket, roomCode, sessionToken, rebindSessionToCurrentSocket]);
 
