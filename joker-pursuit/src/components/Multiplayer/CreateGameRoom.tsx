@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useMultiplayer } from '../../context/MultiplayerContext';
+import { useSocket } from '../../context/SocketContext';
 import ConnectionStatus from './ConnectionStatus';
 import './MultiplayerStyles.css';
 
@@ -12,6 +13,7 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [inviteCopyStatus, setInviteCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [returnCopyStatus, setReturnCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const { isConnected, serverUrl, reconnect } = useSocket();
   const {
     createRoom,
     roomCode,
@@ -27,7 +29,7 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
 
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!playerName.trim()) return;
+    if (!playerName.trim() || !isConnected || isCreating) return;
     
     setIsCreating(true);
     try {
@@ -55,6 +57,7 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
     ? `${window.location.origin}/?room=${encodeURIComponent(roomCode)}${selfPlayerName ? `&name=${encodeURIComponent(selfPlayerName)}` : ''}`
     : '';
   const resolvedHostPlayerId = hostPlayerId || players[0]?.id || null;
+  const canSubmitCreate = Boolean(playerName.trim() && isConnected && !isCreating);
 
   const getPresenceLabel = (targetPlayerId: string): string => {
     const presence = playersPresence[targetPlayerId];
@@ -142,6 +145,19 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
               </div>
             )}
 
+            {!isConnected && (
+              <div className="error-message" data-testid="create-room-connection-gate">
+                <p>
+                  {serverUrl
+                    ? 'Connecting to the multiplayer server before creating a room...'
+                    : 'Configure a multiplayer server before creating a room.'}
+                </p>
+                {serverUrl && (
+                  <button type="button" onClick={reconnect} className="clear-error-btn">Retry</button>
+                )}
+              </div>
+            )}
+
             <div className="button-group">
               <button
                 type="button"
@@ -156,11 +172,11 @@ const CreateGameRoom: React.FC<CreateGameRoomProps> = ({ onBack }) => {
               <button
                 type="submit"
                 className="skeuomorphic-button primary-button"
-                disabled={isCreating || !playerName.trim()}
+                disabled={!canSubmitCreate}
                 data-testid="create-room-submit"
               >
                 <span className="button-text">
-                  {isCreating ? 'Creating...' : 'Create Room'}
+                  {isCreating ? 'Creating...' : isConnected ? 'Create Room' : 'Connecting...'}
                 </span>
                 <div className="button-shine"></div>
               </button>

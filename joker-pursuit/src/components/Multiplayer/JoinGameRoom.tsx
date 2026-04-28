@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useMultiplayer } from '../../context/MultiplayerContext';
+import { useSocket } from '../../context/SocketContext';
 import ConnectionStatus from './ConnectionStatus';
 import './MultiplayerStyles.css';
 
@@ -22,6 +23,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
   const [roomCode, setRoomCode] = useState(initialRoomCode?.toUpperCase() || '');
   const [isJoining, setIsJoining] = useState(false);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const { isConnected, serverUrl, reconnect } = useSocket();
   const { 
     joinRoom, 
     roomCode: connectedRoomCode, 
@@ -55,7 +57,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
 
   const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!playerName.trim() || !roomCode.trim()) return;
+    if (!playerName.trim() || !roomCode.trim() || !isConnected || isJoining) return;
     
     setIsJoining(true);
     try {
@@ -68,6 +70,7 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
   };
 
   const resolvedHostPlayerId = hostPlayerId || players[0]?.id || null;
+  const canSubmitJoin = Boolean(playerName.trim() && roomCode.trim() && isConnected && !isJoining);
 
   const getPresenceLabel = (targetPlayerId: string): string => {
     const presence = playersPresence[targetPlayerId];
@@ -165,6 +168,19 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
               </div>
             )}
 
+            {!isConnected && (
+              <div className="error-message" data-testid="join-room-connection-gate">
+                <p>
+                  {serverUrl
+                    ? 'Connecting to the multiplayer server before joining...'
+                    : 'Configure a multiplayer server before joining.'}
+                </p>
+                {serverUrl && (
+                  <button type="button" onClick={reconnect} className="clear-error-btn">Retry</button>
+                )}
+              </div>
+            )}
+
             <div className="button-group">
               <button
                 type="button"
@@ -179,11 +195,11 @@ const JoinGameRoom: React.FC<JoinGameRoomProps> = ({ onBack, initialRoomCode }) 
               <button
                 type="submit"
                 className="skeuomorphic-button primary-button"
-                disabled={isJoining || !playerName.trim() || !roomCode.trim()}
+                disabled={!canSubmitJoin}
                 data-testid="join-room-submit"
               >
                 <span className="button-text">
-                  {isJoining ? 'Joining...' : 'Join Room'}
+                  {isJoining ? 'Joining...' : isConnected ? 'Join Room' : 'Connecting...'}
                 </span>
                 <div className="button-shine"></div>
               </button>

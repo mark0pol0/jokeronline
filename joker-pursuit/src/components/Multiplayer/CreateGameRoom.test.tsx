@@ -1,13 +1,19 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import CreateGameRoom from './CreateGameRoom';
 import { useMultiplayer } from '../../context/MultiplayerContext';
+import { useSocket } from '../../context/SocketContext';
 
 jest.mock('../../context/MultiplayerContext', () => ({
   useMultiplayer: jest.fn()
 }));
 
+jest.mock('../../context/SocketContext', () => ({
+  useSocket: jest.fn()
+}));
+
 const mockedUseMultiplayer = useMultiplayer as jest.MockedFunction<typeof useMultiplayer>;
+const mockedUseSocket = useSocket as jest.MockedFunction<typeof useSocket>;
 
 const mockMultiplayerState = (overrides: Record<string, unknown> = {}) => {
   mockedUseMultiplayer.mockReturnValue({
@@ -38,7 +44,23 @@ const mockMultiplayerState = (overrides: Record<string, unknown> = {}) => {
   } as any);
 };
 
+const mockSocketState = (overrides: Record<string, unknown> = {}) => {
+  mockedUseSocket.mockReturnValue({
+    socket: null,
+    isConnected: true,
+    serverUrl: 'https://jokeronline.onrender.com',
+    connectionError: null,
+    updateServerUrl: jest.fn(),
+    reconnect: jest.fn(),
+    ...overrides
+  } as any);
+};
+
 describe('CreateGameRoom', () => {
+  beforeEach(() => {
+    mockSocketState();
+  });
+
   afterEach(() => {
     jest.clearAllMocks();
   });
@@ -72,7 +94,27 @@ describe('CreateGameRoom', () => {
     expect(screen.getByTestId('create-room-code')).toHaveTextContent('ABC123');
     expect(screen.getByText('You')).toBeInTheDocument();
     expect(screen.getByText('Host')).toBeInTheDocument();
-    expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(screen.getAllByText('Connected').length).toBeGreaterThan(0);
     expect(screen.getByText('Reconnecting')).toBeInTheDocument();
+  });
+
+  test('blocks create attempts until the socket is connected', () => {
+    const createRoom = jest.fn();
+    mockSocketState({
+      isConnected: false,
+      serverUrl: 'https://jokeronline.onrender.com'
+    });
+    mockMultiplayerState({ createRoom });
+
+    render(<CreateGameRoom onBack={jest.fn()} />);
+
+    fireEvent.change(screen.getByTestId('create-room-player-name'), {
+      target: { value: 'Host' }
+    });
+    fireEvent.click(screen.getByTestId('create-room-submit'));
+
+    expect(screen.getByTestId('create-room-submit')).toBeDisabled();
+    expect(screen.getByTestId('create-room-connection-gate')).toHaveTextContent('Connecting to the multiplayer server');
+    expect(createRoom).not.toHaveBeenCalled();
   });
 });

@@ -243,6 +243,42 @@ const isSessionUnboundError = (errorMessage?: string): boolean => {
   return errorMessage.toLowerCase().includes('session is not bound to this connection');
 };
 
+const waitForSocketConnection = async (
+  socket: ReturnType<typeof socketIOClient>,
+  isConnected: boolean,
+  timeoutMs = 8000
+): Promise<void> => {
+  if (isConnected || socket.connected) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error('Timed out while connecting to the multiplayer server.'));
+    }, timeoutMs);
+
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      socket.off('connect', handleConnect);
+      socket.off('connect_error', handleConnectError);
+    };
+
+    const handleConnect = () => {
+      cleanup();
+      resolve();
+    };
+
+    const handleConnectError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+
+    socket.once('connect', handleConnect);
+    socket.once('connect_error', handleConnectError);
+  });
+};
+
 // Create context with default values
 const MultiplayerContext = createContext<MultiplayerContextType>({
   isOnlineMode: false,
@@ -668,8 +704,11 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
       return Promise.reject(new Error(message));
     }
 
-    if (!isConnected) {
-      const message = 'Not connected to server. Please verify the Socket.IO backend URL and try again.';
+    try {
+      await waitForSocketConnection(socket, isConnected);
+    } catch (connectionWaitError) {
+      const reason = connectionWaitError instanceof Error ? connectionWaitError.message : 'Connection failed.';
+      const message = `Not connected to server. ${reason}`;
       setError(message);
       return Promise.reject(new Error(message));
     }
@@ -727,8 +766,11 @@ export const MultiplayerProvider: React.FC<MultiplayerProviderProps> = ({ childr
       return Promise.reject(new Error(message));
     }
 
-    if (!isConnected) {
-      const message = 'Not connected to server. Please verify the Socket.IO backend URL and try again.';
+    try {
+      await waitForSocketConnection(socket, isConnected);
+    } catch (connectionWaitError) {
+      const reason = connectionWaitError instanceof Error ? connectionWaitError.message : 'Connection failed.';
+      const message = `Not connected to server. ${reason}`;
       setError(message);
       return Promise.reject(new Error(message));
     }

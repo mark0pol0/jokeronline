@@ -1,13 +1,19 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import JoinGameRoom from './JoinGameRoom';
 import { useMultiplayer } from '../../context/MultiplayerContext';
+import { useSocket } from '../../context/SocketContext';
 
 jest.mock('../../context/MultiplayerContext', () => ({
   useMultiplayer: jest.fn()
 }));
 
+jest.mock('../../context/SocketContext', () => ({
+  useSocket: jest.fn()
+}));
+
 const mockedUseMultiplayer = useMultiplayer as jest.MockedFunction<typeof useMultiplayer>;
+const mockedUseSocket = useSocket as jest.MockedFunction<typeof useSocket>;
 
 const mockMultiplayerState = (overrides: Record<string, unknown> = {}) => {
   mockedUseMultiplayer.mockReturnValue({
@@ -38,9 +44,22 @@ const mockMultiplayerState = (overrides: Record<string, unknown> = {}) => {
   } as any);
 };
 
+const mockSocketState = (overrides: Record<string, unknown> = {}) => {
+  mockedUseSocket.mockReturnValue({
+    socket: null,
+    isConnected: true,
+    serverUrl: 'https://jokeronline.onrender.com',
+    connectionError: null,
+    updateServerUrl: jest.fn(),
+    reconnect: jest.fn(),
+    ...overrides
+  } as any);
+};
+
 describe('JoinGameRoom', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/');
+    mockSocketState();
   });
 
   afterEach(() => {
@@ -99,5 +118,27 @@ describe('JoinGameRoom', () => {
     render(<JoinGameRoom onBack={jest.fn()} initialRoomCode="ABC123" />);
 
     expect(screen.getByTestId('join-room-player-name')).toHaveValue('Player One');
+  });
+
+  test('blocks join attempts until the socket is connected', () => {
+    const joinRoom = jest.fn();
+    mockSocketState({
+      isConnected: false,
+      serverUrl: 'https://jokeronline.onrender.com'
+    });
+    mockMultiplayerState({
+      joinRoom
+    });
+
+    render(<JoinGameRoom onBack={jest.fn()} initialRoomCode="ABC123" />);
+
+    fireEvent.change(screen.getByTestId('join-room-player-name'), {
+      target: { value: 'Guest' }
+    });
+    fireEvent.click(screen.getByTestId('join-room-submit'));
+
+    expect(screen.getByTestId('join-room-submit')).toBeDisabled();
+    expect(screen.getByTestId('join-room-connection-gate')).toHaveTextContent('Connecting to the multiplayer server');
+    expect(joinRoom).not.toHaveBeenCalled();
   });
 });
