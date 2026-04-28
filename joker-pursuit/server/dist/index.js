@@ -66,6 +66,51 @@ function serializeV2Players(players) {
         color: player.color
     }));
 }
+function summarizeGameState(gameState) {
+    if (!gameState || typeof gameState !== 'object') {
+        return {
+            hasGameState: false
+        };
+    }
+    const players = Array.isArray(gameState.players) ? gameState.players : [];
+    const currentPlayerIndex = Number(gameState.currentPlayerIndex ?? 0);
+    const currentPlayer = players[currentPlayerIndex];
+    const moves = Array.isArray(gameState.moves) ? gameState.moves : [];
+    return {
+        hasGameState: true,
+        phase: gameState.phase,
+        currentPlayerIndex,
+        currentPlayerId: currentPlayer?.id,
+        currentPlayerName: currentPlayer?.name,
+        playerCount: players.length,
+        moveCount: moves.length,
+        deckCount: Array.isArray(gameState.deck) ? gameState.deck.length : undefined,
+        discardCount: Array.isArray(gameState.discardPile) ? gameState.discardPile.length : undefined
+    };
+}
+function summarizeRoom(room) {
+    return {
+        roomCode: room.code,
+        roomId: room.id,
+        stateVersion: room.stateVersion,
+        isStarted: room.isStarted,
+        hostPlayerId: room.hostPlayerId,
+        players: room.players.map(player => ({
+            id: player.id,
+            name: player.name,
+            connected: player.connected
+        })),
+        game: summarizeGameState(room.gameState)
+    };
+}
+function logV2Event(event, details) {
+    console.log(JSON.stringify({
+        scope: 'multiplayer-v2',
+        event,
+        at: new Date().toISOString(),
+        ...details
+    }));
+}
 function getPlayerPresence(player) {
     if (player.connected) {
         return {
@@ -246,6 +291,12 @@ io.on('connection', (socket) => {
                 await store.saveSession(session);
                 setSocketSession(socket.id, { roomCode, playerId, sessionToken });
                 socket.join(roomId);
+                logV2Event('room_created', {
+                    socketId: socket.id,
+                    playerId,
+                    playerName,
+                    room: summarizeRoom(room)
+                });
                 callback({
                     success: true,
                     roomId,
@@ -315,6 +366,12 @@ io.on('connection', (socket) => {
                 });
                 setSocketSession(socket.id, { roomCode: room.code, playerId, sessionToken });
                 socket.join(room.id);
+                logV2Event('player_joined', {
+                    socketId: socket.id,
+                    playerId,
+                    playerName,
+                    room: summarizeRoom(room)
+                });
                 callback({
                     success: true,
                     roomId: room.id,
@@ -381,6 +438,12 @@ io.on('connection', (socket) => {
                     sessionToken
                 });
                 socket.join(room.id);
+                logV2Event('player_rejoined', {
+                    socketId: socket.id,
+                    playerId: player.id,
+                    playerName: player.name,
+                    room: summarizeRoom(room)
+                });
                 callback({
                     success: true,
                     roomId: room.id,
@@ -426,6 +489,11 @@ io.on('connection', (socket) => {
                 room.isStarted = true;
                 room.updatedAt = getNow();
                 await store.saveRoom(room);
+                logV2Event('game_started', {
+                    socketId: socket.id,
+                    playerId: session.playerId,
+                    room: summarizeRoom(room)
+                });
                 io.to(room.id).emit('game-started-v2', {
                     roomCode: room.code,
                     players: serializeV2Players(room.players),
@@ -469,6 +537,13 @@ io.on('connection', (socket) => {
                 }
                 room.updatedAt = getNow();
                 await store.saveRoom(room);
+                logV2Event('player_color_updated', {
+                    socketId: socket.id,
+                    playerId: player.id,
+                    color,
+                    rebound: binding.rebound,
+                    room: summarizeRoom(room)
+                });
                 io.to(room.id).emit('player-color-updated-v2', {
                     roomCode: room.code,
                     playerId: player.id,
@@ -520,6 +595,15 @@ io.on('connection', (socket) => {
                     action
                 });
                 if (!result.success) {
+                    logV2Event('action_rejected', {
+                        socketId: socket.id,
+                        playerId: session.playerId,
+                        actionType: action.type,
+                        baseVersion,
+                        reason: result.reason,
+                        expectedVersion: result.room.stateVersion,
+                        room: summarizeRoom(result.room)
+                    });
                     await sendRejected(socket.id, result.reason || 'action_rejected', result.room.stateVersion, result.room, session.playerId);
                     callback({
                         success: false,
@@ -529,6 +613,15 @@ io.on('connection', (socket) => {
                     return;
                 }
                 await store.saveRoom(result.room);
+                logV2Event('action_accepted', {
+                    socketId: socket.id,
+                    playerId: session.playerId,
+                    actionType: action.type,
+                    baseVersion,
+                    stateVersion: result.room.stateVersion,
+                    rebound: binding.rebound,
+                    room: summarizeRoom(result.room)
+                });
                 await emitSnapshot(result.room);
                 await emitPresenceUpdate(result.room);
                 callback({
@@ -564,6 +657,12 @@ io.on('connection', (socket) => {
                 if (binding.rebound) {
                     await emitPresenceUpdate(room);
                 }
+                logV2Event('sync_requested', {
+                    socketId: socket.id,
+                    playerId: session.playerId,
+                    rebound: binding.rebound,
+                    room: summarizeRoom(room)
+                });
                 io.to(socket.id).emit('room-snapshot-v2', buildSnapshot(room, session.playerId));
                 callback?.({ success: true, stateVersion: room.stateVersion });
             }
@@ -616,10 +715,23 @@ io.on('connection', (socket) => {
                 socket.leave(room.id);
                 if (room.players.length === 0) {
                     await store.deleteRoom(room.code);
+                    logV2Event('room_deleted_after_leave', {
+                        socketId: socket.id,
+                        playerId: session.playerId,
+                        roomCode: room.code,
+                        roomId: room.id
+                    });
                     callback?.({ success: true });
                     return;
                 }
                 await store.saveRoom(room);
+                logV2Event('player_left', {
+                    socketId: socket.id,
+                    playerId: session.playerId,
+                    didRemoveSeat,
+                    previousHostId,
+                    room: summarizeRoom(room)
+                });
                 if (didRemoveSeat) {
                     io.to(room.id).emit('player-joined-v2', {
                         roomCode: room.code,
@@ -1069,9 +1181,22 @@ io.on('connection', (socket) => {
             pruneExpiredDisconnectedPlayers(room);
             if (room.players.length === 0) {
                 await store.deleteRoom(room.code);
+                logV2Event('room_deleted_after_disconnect', {
+                    socketId: socket.id,
+                    playerId: socketSession.playerId,
+                    roomCode: room.code,
+                    roomId: room.id
+                });
                 return;
             }
             await store.saveRoom(room);
+            logV2Event('player_disconnected', {
+                socketId: socket.id,
+                playerId: socketSession.playerId,
+                previousHostId,
+                previousPlayerCount,
+                room: summarizeRoom(room)
+            });
             if (room.players.length !== previousPlayerCount) {
                 io.to(room.id).emit('player-joined-v2', {
                     roomCode: room.code,

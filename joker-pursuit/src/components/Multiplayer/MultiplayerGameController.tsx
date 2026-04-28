@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMultiplayer, MultiplayerPlayer } from '../../context/MultiplayerContext';
+import { useSocket } from '../../context/SocketContext';
 import { GameState } from '../../models/GameState';
 import { createBoard } from '../../models/BoardModel';
 import { Card, Rank, Suit, createDecks, shuffleDeck } from '../../models/Card';
@@ -26,6 +27,7 @@ const PLAYER_COLOR_NAME_BY_VALUE = PLAYER_COLORS.reduce((acc, color) => {
   return acc;
 }, {} as Record<string, string>);
 const SNAPSHOT_HYDRATION_RETRY_DELAYS_MS = [0, 1000, 3000];
+const ACTIVE_GAME_KEEPALIVE_INTERVAL_MS = 60_000;
 
 const normalizeGameStateForClient = (state: GameState): GameState => {
   if (!state?.board?.allSpaces || state.board.allSpaces instanceof Map) {
@@ -264,7 +266,8 @@ const getReadableTextColor = (backgroundColor?: string): string => {
 };
 
 const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ onBack }) => {
-  const { 
+  const { serverUrl } = useSocket();
+  const {
     isOnlineMode,
     isHost,
     hostPlayerId,
@@ -342,6 +345,40 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
   useEffect(() => {
     gameStateRef.current = gameState;
   }, [gameState]);
+
+  useEffect(() => {
+    if (
+      process.env.NODE_ENV === 'test' ||
+      !isOnlineMode ||
+      !isGameStarted ||
+      !roomCode ||
+      !serverUrl
+    ) {
+      return undefined;
+    }
+
+    let isCancelled = false;
+    const healthUrl = `${serverUrl.replace(/\/+$/, '')}/healthz`;
+
+    const pingServer = () => {
+      fetch(healthUrl, {
+        method: 'GET',
+        cache: 'no-store'
+      }).catch((error) => {
+        if (!isCancelled) {
+          console.warn('[multiplayer] Active game keepalive failed:', error);
+        }
+      });
+    };
+
+    pingServer();
+    const timer = window.setInterval(pingServer, ACTIVE_GAME_KEEPALIVE_INTERVAL_MS);
+
+    return () => {
+      isCancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isGameStarted, isOnlineMode, roomCode, serverUrl]);
 
   useEffect(() => {
     if (stateVersion > latestSnapshotVersionRef.current) {
