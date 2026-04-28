@@ -577,18 +577,20 @@ const GameController: React.FC<GameControllerProps> = ({
       if (!boardElement) {
         return;
       }
+      const boardRotation = (boardElement as HTMLElement).dataset.boardRotation || '0';
+      const boardTransform = `translate(-50%, -50%) rotate(${boardRotation}deg) scale(${newZoom})`;
       
       // During pinch gesture, ONLY update the DOM directly (no React state updates)
       // This prevents fighting between React renders and direct DOM manipulation
       if (isPinchActive) {
         // Apply the new zoom directly for immediate feedback
-        (boardElement as HTMLElement).style.transform = `translate(-50%, -50%) scale(${newZoom})`;
+        (boardElement as HTMLElement).style.transform = boardTransform;
         
         // Store the current zoom in ref for when pinch ends
         currentZoomRef.current = newZoom;
       } else {
         // When not pinching, update both DOM and React state
-        (boardElement as HTMLElement).style.transform = `translate(-50%, -50%) scale(${newZoom})`;
+        (boardElement as HTMLElement).style.transform = boardTransform;
         setZoomLevel(newZoom);
       }
       
@@ -752,6 +754,7 @@ const GameController: React.FC<GameControllerProps> = ({
   const localMultiplayerPlayer = isMultiplayer && localPlayerId
     ? gameState.players.find(player => player.id === localPlayerId)
     : undefined;
+  const boardOrientationPlayerId = localMultiplayerPlayer?.id || currentPlayer?.id;
   const handOwner = isMultiplayer ? (localMultiplayerPlayer || currentPlayer) : currentPlayer;
   const handOwnerColor = playerColors[handOwner?.id] || currentPlayerColor;
   const shouldShowDiscardButton = isMultiplayer
@@ -3825,6 +3828,7 @@ const GameController: React.FC<GameControllerProps> = ({
                 onPegSelect={handlePegSelect}
                 selectedPegId={selectedPegId}
                 currentPlayerId={currentPlayer?.id}
+                orientationPlayerId={boardOrientationPlayerId}
                 selectableSpaceIds={selectableSpaceIds}
                 selectablePegIds={selectablePegIds}
                 playerColors={playerColors}

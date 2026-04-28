@@ -21,6 +21,48 @@
   cursor: pointer;
 }
 
+.board-orientation-controls {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 8px;
+  background: rgba(13, 27, 42, 0.78);
+  border: 1px solid rgba(219, 234, 247, 0.22);
+  box-shadow: 0 8px 22px rgba(4, 10, 18, 0.28);
+  backdrop-filter: blur(8px);
+}
+
+.board-orientation-button {
+  min-width: 42px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(232, 242, 250, 0.32);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(245, 250, 255, 0.96), rgba(210, 224, 238, 0.94));
+  color: #14283b;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(5, 12, 20, 0.22);
+}
+
+.board-orientation-button:hover {
+  filter: brightness(1.04);
+}
+
+.board-orientation-button:active {
+  transform: translateY(1px);
+}
+
+.board-orientation-button.wide {
+  min-width: 58px;
+}
+
 .board {
   position: absolute;
   left: 50%;

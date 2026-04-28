@@ -24,6 +24,7 @@ interface BoardProps {
   onPegSelect: (pegId: string) => void;
   selectedPegId: string | null;
   currentPlayerId: string;
+  orientationPlayerId?: string;
   moveHighlight?: {
     id: string;
     fromSpaceId?: string;
@@ -44,6 +45,11 @@ interface BoardTransform {
 }
 
 const DEFAULT_BOARD_CENTER: Point = { x: 700, y: 700 };
+
+const normalizeDegrees = (degrees: number): number => {
+  const normalized = degrees % 360;
+  return normalized < 0 ? normalized + 360 : normalized;
+};
 
 const resolveBoardCenter = (board: BoardModel): Point => {
   if (!board?.allSpaces) {
@@ -98,6 +104,45 @@ const resolveBackgroundCircleSize = (board: BoardModel, boardCenter: Point): num
   return maxDistance > 0 ? maxDistance * 2 + 60 : 800;
 };
 
+const resolveDefaultOrientationDegrees = (
+  board: BoardModel,
+  boardCenter: Point,
+  playerId?: string
+): number => {
+  if (!playerId || !board?.sections?.length || !board?.allSpaces) {
+    return 0;
+  }
+
+  const playerSection = board.sections.find(section => section.playerIds?.includes(playerId));
+  if (!playerSection) {
+    return 0;
+  }
+
+  const homeSpaces = getSpacesArray(board.allSpaces).filter(space =>
+    space.sectionIndex === playerSection.index &&
+    space.type === 'home'
+  );
+  if (homeSpaces.length === 0) {
+    return 0;
+  }
+
+  const homeCenter = homeSpaces.reduce(
+    (sum, space) => ({
+      x: sum.x + space.x,
+      y: sum.y + space.y
+    }),
+    { x: 0, y: 0 }
+  );
+  homeCenter.x /= homeSpaces.length;
+  homeCenter.y /= homeSpaces.length;
+
+  const homeAngleDegrees = Math.atan2(homeCenter.y - boardCenter.y, homeCenter.x - boardCenter.x) * 180 / Math.PI;
+  return normalizeDegrees(90 - homeAngleDegrees);
+};
+
+const formatBoardTransform = (zoomLevel: number, rotationDegrees: number): string =>
+  `translate(-50%, -50%) rotate(${rotationDegrees}deg) scale(${zoomLevel})`;
+
 const Board: React.FC<BoardProps> = ({ 
   board, 
   onSpaceClick, 
@@ -107,6 +152,7 @@ const Board: React.FC<BoardProps> = ({
   onPegSelect,
   selectedPegId,
   currentPlayerId,
+  orientationPlayerId,
   moveHighlight,
   zoomLevel
 }) => {
@@ -114,6 +160,7 @@ const Board: React.FC<BoardProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<Point>({ x: 0, y: 0 });
   const [boardCenter, setBoardCenter] = useState<Point>(() => resolveBoardCenter(board));
+  const [manualRotationOffset, setManualRotationOffset] = useState(0);
   const boardRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   // Track if this is the initial mount
@@ -124,6 +171,10 @@ const Board: React.FC<BoardProps> = ({
     resolveBackgroundCircleSize(board, resolveBoardCenter(board))
   );
   const [activeMoveHighlight, setActiveMoveHighlight] = useState<BoardProps['moveHighlight']>();
+  const defaultOrientationDegrees = normalizeDegrees(
+    resolveDefaultOrientationDegrees(board, boardCenter, orientationPlayerId || currentPlayerId)
+  );
+  const boardRotationDegrees = normalizeDegrees(defaultOrientationDegrees + manualRotationOffset);
   
   // Center and scale the board appropriately on mount and when board dimensions change
   useEffect(() => {
@@ -164,7 +215,7 @@ const Board: React.FC<BoardProps> = ({
       // Explicitly set the board position to center it
       board.style.left = '50%';
       board.style.top = '50%';
-      board.style.transform = `translate(-50%, -50%) scale(${zoomLevel})`;
+      board.style.transform = formatBoardTransform(zoomLevel, boardRotationDegrees);
       
       // Stop any ongoing dragging
       setIsDragging(false);
@@ -172,7 +223,7 @@ const Board: React.FC<BoardProps> = ({
       // Force a reflow to ensure dimensions are updated
       void container.offsetHeight;
     }
-  }, [zoomLevel]);
+  }, [zoomLevel, boardRotationDegrees]);
 
   // Update board center when spaces change
   useEffect(() => {
@@ -212,7 +263,7 @@ const Board: React.FC<BoardProps> = ({
       // Important: When zooming, we only update the scale component of the transform
       // but maintain the current position (left/top CSS properties), which preserves
       // the user's current view rather than snapping back to center
-      board.style.transform = `translate(-50%, -50%) scale(${zoomLevel})`;
+      board.style.transform = formatBoardTransform(zoomLevel, boardRotationDegrees);
       board.style.transformOrigin = 'center center';
     }
     
@@ -220,7 +271,7 @@ const Board: React.FC<BoardProps> = ({
     const handlePinchEnd = () => {
       // When pinch ends, make sure board transform matches the current zoom level
       requestAnimationFrame(() => {
-        board.style.transform = `translate(-50%, -50%) scale(${zoomLevel})`;
+        board.style.transform = formatBoardTransform(zoomLevel, boardRotationDegrees);
       });
     };
     
@@ -241,7 +292,7 @@ const Board: React.FC<BoardProps> = ({
     return () => {
       observer.disconnect();
     };
-  }, [zoomLevel]);
+  }, [zoomLevel, boardRotationDegrees]);
 
   // Check for space collisions
   const detectCollisions = useCallback(() => {
@@ -1152,7 +1203,7 @@ const Board: React.FC<BoardProps> = ({
         const board = boardRef.current;
         board.style.left = '50%';
         board.style.top = '50%';
-        board.style.transform = `translate(-50%, -50%) scale(${zoomLevel})`;
+        board.style.transform = formatBoardTransform(zoomLevel, boardRotationDegrees);
       }
       
       // Force any dragging to stop
@@ -1165,7 +1216,19 @@ const Board: React.FC<BoardProps> = ({
     return () => {
       container.removeEventListener('resetposition', handleResetPosition);
     };
-  }, [zoomLevel]);
+  }, [zoomLevel, boardRotationDegrees]);
+
+  const rotateBoardLeft = () => {
+    setManualRotationOffset(previous => previous - 45);
+  };
+
+  const rotateBoardRight = () => {
+    setManualRotationOffset(previous => previous + 45);
+  };
+
+  const resetBoardOrientation = () => {
+    setManualRotationOffset(0);
+  };
 
   // Listen for custom board position updates from pinch-zoom interactions
   useEffect(() => {
@@ -1210,12 +1273,48 @@ const Board: React.FC<BoardProps> = ({
         overflow: 'hidden'
       }}
     >
+      <div className="board-orientation-controls" aria-label="Board orientation controls">
+        <button
+          type="button"
+          className="board-orientation-button"
+          onClick={rotateBoardLeft}
+          onMouseDown={(event) => event.stopPropagation()}
+          onTouchStart={(event) => event.stopPropagation()}
+          title="Rotate board left"
+          aria-label="Rotate board left"
+        >
+          -45
+        </button>
+        <button
+          type="button"
+          className="board-orientation-button wide"
+          onClick={resetBoardOrientation}
+          onMouseDown={(event) => event.stopPropagation()}
+          onTouchStart={(event) => event.stopPropagation()}
+          title="Reset board so your home is south"
+          aria-label="Reset board so your home is south"
+        >
+          Home
+        </button>
+        <button
+          type="button"
+          className="board-orientation-button"
+          onClick={rotateBoardRight}
+          onMouseDown={(event) => event.stopPropagation()}
+          onTouchStart={(event) => event.stopPropagation()}
+          title="Rotate board right"
+          aria-label="Rotate board right"
+        >
+          +45
+        </button>
+      </div>
       <div 
         ref={boardRef}
         className="board"
+        data-board-rotation={boardRotationDegrees}
         style={{
-          // Apply scale only, position is handled via left/top
-          transform: `translate(-50%, -50%) scale(${zoomLevel})`,
+          // Position is handled via left/top so drag does not fight zoom or rotation.
+          transform: formatBoardTransform(zoomLevel, boardRotationDegrees),
           left: `calc(50% + ${transform.translate.x}px)`,
           top: `calc(50% + ${transform.translate.y}px)`,
           transformOrigin: 'center center', // Ensure zooming happens around the center
