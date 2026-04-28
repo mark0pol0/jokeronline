@@ -104,6 +104,128 @@ function serializeV2Players(players: RoomPlayerV2[]) {
   }));
 }
 
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+}
+
+function summarizeCard(card: unknown) {
+  const cardObject = asObject(card);
+  if (!cardObject) {
+    return undefined;
+  }
+
+  return {
+    id: typeof cardObject.id === 'string' ? cardObject.id : undefined,
+    rank: typeof cardObject.rank === 'string' ? cardObject.rank : undefined,
+    suit: typeof cardObject.suit === 'string' ? cardObject.suit : undefined
+  };
+}
+
+function findCardInState(gameState: unknown, cardId: unknown) {
+  if (typeof cardId !== 'string') {
+    return undefined;
+  }
+
+  const state = asObject(gameState);
+  if (!state) {
+    return undefined;
+  }
+
+  const players = Array.isArray(state.players) ? state.players : [];
+  for (const player of players) {
+    const playerObject = asObject(player);
+    const hand = Array.isArray(playerObject?.hand) ? playerObject.hand : [];
+    const card = hand.find(candidate => asObject(candidate)?.id === cardId);
+    if (card) {
+      return card;
+    }
+  }
+
+  const discardPile = Array.isArray(state.discardPile) ? state.discardPile : [];
+  return discardPile.find(candidate => asObject(candidate)?.id === cardId);
+}
+
+function summarizeMoveMetadata(metadata: unknown) {
+  const metadataObject = asObject(metadata);
+  if (!metadataObject) {
+    return undefined;
+  }
+
+  const sevenCardMove = asObject(metadataObject.sevenCardMove);
+  const nineCardMove = asObject(metadataObject.nineCardMove);
+
+  return {
+    castleEntry: metadataObject.castleEntry === true ? true : undefined,
+    castleMovement: metadataObject.castleMovement === true ? true : undefined,
+    willPassCastleEntrance: metadataObject.willPassCastleEntrance === true ? true : undefined,
+    willLandOnCastleEntrance: metadataObject.willLandOnCastleEntrance === true ? true : undefined,
+    bumpedPegId: typeof metadataObject.bumpedPegId === 'string' ? metadataObject.bumpedPegId : undefined,
+    bumpDestination: typeof metadataObject.bumpDestination === 'string' ? metadataObject.bumpDestination : undefined,
+    sevenCardMove: sevenCardMove
+      ? {
+          steps: Number.isFinite(Number(sevenCardMove.steps)) ? Number(sevenCardMove.steps) : undefined,
+          isFirstMove: typeof sevenCardMove.isFirstMove === 'boolean' ? sevenCardMove.isFirstMove : undefined
+        }
+      : undefined,
+    nineCardMove: nineCardMove
+      ? {
+          direction: typeof nineCardMove.direction === 'string' ? nineCardMove.direction : undefined,
+          steps: Number.isFinite(Number(nineCardMove.steps)) ? Number(nineCardMove.steps) : undefined,
+          isFirstMove: typeof nineCardMove.isFirstMove === 'boolean' ? nineCardMove.isFirstMove : undefined
+        }
+      : undefined
+  };
+}
+
+function summarizeMove(move: unknown) {
+  const moveObject = asObject(move);
+  if (!moveObject) {
+    return undefined;
+  }
+
+  const destinations = Array.isArray(moveObject.destinations)
+    ? moveObject.destinations.filter((destination): destination is string => typeof destination === 'string')
+    : [];
+
+  return {
+    playerId: typeof moveObject.playerId === 'string' ? moveObject.playerId : undefined,
+    cardId: typeof moveObject.cardId === 'string' ? moveObject.cardId : undefined,
+    pegId: typeof moveObject.pegId === 'string' ? moveObject.pegId : undefined,
+    from: typeof moveObject.from === 'string' ? moveObject.from : undefined,
+    to: destinations[0],
+    destinations,
+    metadata: summarizeMoveMetadata(moveObject.metadata)
+  };
+}
+
+function summarizeActionTransition(action: GameActionV2, previousGameState: unknown, nextGameState: unknown) {
+  const previousState = asObject(previousGameState);
+  const nextState = asObject(nextGameState);
+  const previousMoves = Array.isArray(previousState?.moves) ? previousState.moves : [];
+  const nextMoves = Array.isArray(nextState?.moves) ? nextState.moves : [];
+  const previousDiscardPile = Array.isArray(previousState?.discardPile) ? previousState.discardPile : [];
+  const nextDiscardPile = Array.isArray(nextState?.discardPile) ? nextState.discardPile : [];
+  const addedMoves = nextMoves.slice(previousMoves.length).map(summarizeMove).filter(Boolean);
+  const latestMove = addedMoves.length > 0
+    ? addedMoves[addedMoves.length - 1]
+    : summarizeMove(nextMoves[nextMoves.length - 1]);
+  const latestMoveObject = asObject(latestMove);
+  const latestCardId = latestMoveObject?.cardId;
+  const playedCard = nextDiscardPile.length > previousDiscardPile.length
+    ? nextDiscardPile[nextDiscardPile.length - 1]
+    : findCardInState(previousState, latestCardId) || findCardInState(nextState, latestCardId);
+
+  return {
+    type: action.type,
+    phase: action.type === 'phase_transition' ? action.phase : undefined,
+    moveDelta: nextMoves.length - previousMoves.length,
+    discardDelta: nextDiscardPile.length - previousDiscardPile.length,
+    playedCard: summarizeCard(playedCard),
+    latestMove,
+    addedMoves
+  };
+}
+
 function summarizeGameState(gameState: any) {
   if (!gameState || typeof gameState !== 'object') {
     return {
@@ -751,6 +873,7 @@ io.on('connection', (socket) => {
               baseVersion,
               reason: result.reason,
               expectedVersion: result.room.stateVersion,
+              actionSummary: summarizeActionTransition(action, room.gameState, action.nextGameState),
               room: summarizeRoom(result.room)
             });
             await sendRejected(socket.id, result.reason || 'action_rejected', result.room.stateVersion, result.room, session.playerId);
@@ -770,6 +893,7 @@ io.on('connection', (socket) => {
             baseVersion,
             stateVersion: result.room.stateVersion,
             rebound: binding.rebound,
+            actionSummary: summarizeActionTransition(action, room.gameState, result.room.gameState),
             room: summarizeRoom(result.room)
           });
           await emitSnapshot(result.room);

@@ -75,6 +75,8 @@ interface SevenCardState {
   selectablePegsForSecondMove?: string[];
 }
 
+type MoveOptions = Parameters<typeof getPossibleMoves>[3];
+
 const expandSingleDestinationMoves = (moves: Move[]): Move[] => {
   const expanded: Move[] = [];
 
@@ -1489,24 +1491,43 @@ const GameController: React.FC<GameControllerProps> = ({
     }
   }, [gameState.currentPlayerIndex, gameState.phase, gameState.players]);
   
+  const getMoveOptionsForSelectedCard = (selectedCard?: Card): MoveOptions => {
+    if (selectedCard?.rank === '9') {
+      const isSecondMove = nineCardState.firstMoveComplete;
+      const direction = isSecondMove
+        ? nineCardState.direction === 'forward' ? 'backward' : 'forward'
+        : nineCardState.direction;
+      const steps = isSecondMove ? nineCardState.remainingSteps : nineCardState.steps;
+
+      return {
+        direction,
+        steps,
+        isSecondMove,
+        firstMovePegId: isSecondMove ? nineCardState.firstMovePegId : undefined
+      };
+    }
+
+    if (selectedCard?.rank === '7' && sevenCardState.isSplit) {
+      const isSecondMove = sevenCardState.state === 'SECOND_MOVE_READY' || sevenCardState.state === 'FIRST_MOVE_COMPLETE';
+      return {
+        steps: isSecondMove ? sevenCardState.remainingSteps : sevenCardState.firstMoveSteps,
+        isSecondMove,
+        firstMovePegId: isSecondMove ? sevenCardState.firstMovePegId : undefined
+      };
+    }
+
+    return undefined;
+  };
+
   // Calculate selectable spaces when a card is selected
-  const calculateSelectableSpaces = (cardId: string) => {
+  const calculateSelectableSpaces = (cardId: string, moveOptionsOverride?: MoveOptions) => {
     const selectedCard = currentPlayer?.hand.find(c => c.id === cardId);
     
     const moves = getPossibleMoves(
       gameState, 
       currentPlayer?.id, 
       cardId,
-      selectedCard?.rank === '9' ? {
-        direction: nineCardState.direction,
-        steps: nineCardState.steps,
-        isSecondMove: nineCardState.firstMoveComplete,
-        firstMovePegId: nineCardState.firstMovePegId
-      } : selectedCard?.rank === '7' && sevenCardState.isSplit ? {
-        steps: sevenCardState.firstMoveSteps,
-        isSecondMove: sevenCardState.firstMoveSteps !== undefined,
-        firstMovePegId: sevenCardState.firstMovePegId
-      } : undefined
+      moveOptionsOverride ?? getMoveOptionsForSelectedCard(selectedCard)
     );
     const spaceIds = new Set<string>();
     const pegIds = new Set<string>();
@@ -1672,7 +1693,11 @@ const GameController: React.FC<GameControllerProps> = ({
     // Calculate selectable spaces for the first move
     if (selectedCardId) {
       setTimeout(() => {
-        const spaces = calculateSelectableSpaces(selectedCardId);
+        const spaces = calculateSelectableSpaces(selectedCardId, {
+          direction: firstMoveDirection,
+          steps,
+          isSecondMove: false
+        });
         setSelectableSpaceIds(spaces);
       }, 0);
     }
@@ -2661,18 +2686,18 @@ const GameController: React.FC<GameControllerProps> = ({
       });
       
       // Setup for the second move
-      handleFirstMoveComplete(pegId, remainingSteps);
+      handleFirstMoveComplete(pegId, remainingSteps, result.newState);
     }
   };
 
   // Helper function to set up the second move of a 9 card split
-  const handleFirstMoveComplete = (pegId: string, remainingSteps: number) => {
+  const handleFirstMoveComplete = (pegId: string, remainingSteps: number, stateForSecondMove: GameState = gameState) => {
     Log('First move completed, setting up second move');
     Log('Setting up 9 card split second move');
     Log(`9 card state: ${JSON.stringify(nineCardState)}`);
     
     // Find the selected card in the player's hand
-    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+    const currentPlayer = stateForSecondMove.players[stateForSecondMove.currentPlayerIndex];
     const selectedCard = currentPlayer.hand.find(c => c.id === selectedCardId);
     
     if (!selectedCard) {
@@ -2689,8 +2714,8 @@ const GameController: React.FC<GameControllerProps> = ({
     Log(`First move direction: ${nineCardState.direction}, second move direction: ${secondMoveDirection}`);
     
     // For 9 card, enforce that total steps must equal 9
-    const firstMoveSteps = nineCardState.steps || 0;
-    const secondMoveSteps = 9 - firstMoveSteps;
+    const firstMoveSteps = nineCardState.steps || 9 - remainingSteps;
+    const secondMoveSteps = remainingSteps;
     const firstMovePegId = pegId;
     
     Log(`First move used ${firstMoveSteps} steps, second move will use ${secondMoveSteps} steps (total: 9)`);
@@ -2704,7 +2729,7 @@ const GameController: React.FC<GameControllerProps> = ({
       }
       
       // Skip pegs that are in castle spaces
-      const pegSpace = findSpaceForPeg(gameState, candidatePegId);
+      const pegSpace = findSpaceForPeg(stateForSecondMove, candidatePegId);
       if (pegSpace?.type === 'castle') {
         Log(`Skipping peg ${candidatePegId} as it's in a castle space`);
         return false;
@@ -2727,7 +2752,7 @@ const GameController: React.FC<GameControllerProps> = ({
     const selectablePegsWithMoves: string[] = [];
     selectablePegs.forEach(candidatePegId => {
       const moves = getPossibleMoves(
-        gameState, 
+        stateForSecondMove,
         currentPlayer.id, 
         selectedCardId || '', 
         {
@@ -3015,6 +3040,7 @@ const GameController: React.FC<GameControllerProps> = ({
     // Check if we're in the middle of a 9 card split move.
     if (nineCardState.state === 'STEPS_CHOSEN' && nineCardState.splitSelected && !nineCardState.firstMoveComplete) {
       Log('Castle move was part of a 9 card split first move, setting up second move');
+      const secondMoveSteps = 9 - (nineCardState.steps || 0);
       
       // Update nine card state to indicate first move is complete
       setNineCardState(prev => ({
@@ -3022,11 +3048,11 @@ const GameController: React.FC<GameControllerProps> = ({
         state: 'FIRST_MOVE_COMPLETE',
         firstMoveComplete: true,
         firstMovePegId: castlePromptState.pegId,
-        remainingSteps: nineCardState.steps
+        remainingSteps: secondMoveSteps
       }));
       
       // Set up second move
-      handleFirstMoveComplete(castlePromptState.pegId, nineCardState.steps || 0);
+      handleFirstMoveComplete(castlePromptState.pegId, secondMoveSteps, newState);
     } else {
       // End the player's turn if not part of a split move
       handleEndTurn(newState);
@@ -3490,14 +3516,38 @@ const GameController: React.FC<GameControllerProps> = ({
         }
       }
       
-      // Regular move handling...
-      const move = {
-        playerId: gameState?.players[gameState?.currentPlayerIndex]?.id,
+      // Regular move handling. Prefer the generated Move object so split-card
+      // metadata and castle-entry flags survive destination selection.
+      const currentPlayerId = gameState?.players[gameState?.currentPlayerIndex]?.id;
+      const generatedMoves = selectedCard && currentPlayerId
+        ? getPossibleMoves(
+            gameState,
+            currentPlayerId,
+            selectedCardId || '',
+            getMoveOptionsForSelectedCard(selectedCard)
+          )
+        : [];
+      const generatedMove = generatedMoves.find(candidate =>
+        candidate.pegId === selectedPegId &&
+        candidate.destinations.includes(spaceId)
+      );
+      const selectedPegSpace = findSpaceForPeg(gameState, selectedPegId);
+      if (!generatedMove && !currentPlayerId) {
+        logDebug('Cannot reconstruct move: missing current player id');
+        return;
+      }
+
+      const move: Move = generatedMove ?? {
+        playerId: currentPlayerId as string,
         cardId: selectedCardId || '', // Ensure non-null value
         pegId: selectedPegId,
-        from: '',
+        from: selectedPegSpace?.id || '',
         destinations: [spaceId]
       };
+
+      if (!generatedMove) {
+        logDebug(`Falling back to reconstructed move for peg ${selectedPegId} to ${spaceId}`);
+      }
       
       // Apply the move
       logDebug("Applying move");
