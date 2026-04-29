@@ -5,6 +5,7 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { SocketProvider } from './context/SocketContext';
 import { MultiplayerProvider } from './context/MultiplayerContext';
+import { GameAudioProvider } from './context/GameAudioContext';
 import { registerServiceWorker } from './serviceWorkerRegistration';
 
 const root = ReactDOM.createRoot(
@@ -14,7 +15,9 @@ root.render(
   <React.StrictMode>
     <SocketProvider>
       <MultiplayerProvider>
-        <App />
+        <GameAudioProvider>
+          <App />
+        </GameAudioProvider>
       </MultiplayerProvider>
     </SocketProvider>
   </React.StrictMode>

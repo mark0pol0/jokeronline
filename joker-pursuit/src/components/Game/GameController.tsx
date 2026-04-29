@@ -21,6 +21,7 @@ import Board from '../Board/Board';
 import CardHand from '../CardHand/CardHand';
 import './GameController.css';
 import { Player } from '../../models/Player';
+import { useGameAudio } from '../../context/GameAudioContext';
 
 interface GameControllerProps {
   playerNames: string[];
@@ -107,6 +108,41 @@ const getOrderedTrackSpaces = (gameState: GameState): BoardSpace[] =>
       }
       return left.index - right.index;
     });
+
+const getPegSpaceSnapshot = (gameState: GameState): Map<string, string> => {
+  const pegSpaces = new Map<string, string>();
+  const spaces = gameState.board.allSpaces instanceof Map
+    ? Array.from(gameState.board.allSpaces.values())
+    : Object.values(gameState.board.allSpaces as unknown as Record<string, BoardSpace>);
+
+  spaces.forEach(space => {
+    (space.pegs || []).forEach(pegId => {
+      pegSpaces.set(pegId, space.id);
+    });
+  });
+
+  return pegSpaces;
+};
+
+const getBoardSpace = (gameState: GameState, spaceId?: string): BoardSpace | undefined => {
+  if (!spaceId) {
+    return undefined;
+  }
+
+  if (gameState.board.allSpaces instanceof Map) {
+    return gameState.board.allSpaces.get(spaceId);
+  }
+
+  return (gameState.board.allSpaces as unknown as Record<string, BoardSpace>)[spaceId];
+};
+
+const getSoundDestinationType = (space?: BoardSpace): 'home' | 'castle' | 'board' | 'starting' => {
+  if (space?.type === 'home' || space?.type === 'castle' || space?.type === 'starting') {
+    return space.type;
+  }
+
+  return 'board';
+};
 
 const resolveNineCastleEntryMove = (gameState: GameState, move: Move): Move | null => {
   const nineMetadata = move.metadata?.nineCardMove;
@@ -360,6 +396,7 @@ const GameController: React.FC<GameControllerProps> = ({
   onHarnessSyncToServer,
   onHarnessCommitStateToServer
 }) => {
+  const audio = useGameAudio();
   // Initialize game state
   const [gameState, setGameState] = useState<GameState>(() => {
     // If a game state override is provided (in multiplayer mode), use it
@@ -436,6 +473,7 @@ const GameController: React.FC<GameControllerProps> = ({
   const currentZoomRef = useRef(1.2); // Keep track of current zoom during pinch
   const handlePegSelectRef = useRef<(pegId: string) => void>(() => {});
   const handleSpaceSelectRef = useRef<(spaceId: string) => void>(() => {});
+  const previousPegSnapshotRef = useRef<Map<string, string> | null>(null);
   
   // Create a ref to hold the last update time for debouncing
   const lastUpdateTimeRef = useRef(0);
@@ -449,6 +487,7 @@ const GameController: React.FC<GameControllerProps> = ({
   const handleZoomIn = () => {
     // Skip if pinch gesture is active
     if (isPinchActive) return;
+    audio.play('ui');
     
     setZoomLevel(prevZoom => {
       // Calculate zoom increment based on current zoom level for acceleration
@@ -462,6 +501,7 @@ const GameController: React.FC<GameControllerProps> = ({
   const handleZoomOut = () => {
     // Skip if pinch gesture is active
     if (isPinchActive) return;
+    audio.play('ui');
     
     setZoomLevel(prevZoom => {
       // Calculate zoom decrement based on current zoom level for acceleration
@@ -475,6 +515,7 @@ const GameController: React.FC<GameControllerProps> = ({
   const handleResetZoom = () => {
     // Skip if pinch gesture is active
     if (isPinchActive) return;
+    audio.play('ui');
     
     setZoomLevel(1.2); // Reset to initial zoom level
     
@@ -725,6 +766,36 @@ const GameController: React.FC<GameControllerProps> = ({
       countPegs();
     }
   }, [gameState]);
+
+  useEffect(() => {
+    const previousPegSnapshot = previousPegSnapshotRef.current;
+    const nextPegSnapshot = getPegSpaceSnapshot(gameState);
+
+    if (!previousPegSnapshot) {
+      previousPegSnapshotRef.current = nextPegSnapshot;
+      return;
+    }
+
+    const movedPegs: Array<{ fromSpaceId: string; toSpaceId: string }> = [];
+    previousPegSnapshot.forEach((fromSpaceId, pegId) => {
+      const toSpaceId = nextPegSnapshot.get(pegId);
+      if (toSpaceId && toSpaceId !== fromSpaceId) {
+        movedPegs.push({ fromSpaceId, toSpaceId });
+      }
+    });
+
+    if (movedPegs.length > 0) {
+      const primaryMove = movedPegs[0];
+      const toSpace = getBoardSpace(gameState, primaryMove.toSpaceId);
+      audio.play(movedPegs.length > 1 ? 'bump' : 'peg-move', {
+        distance: movedPegs.length,
+        destinationType: getSoundDestinationType(toSpace),
+        intensity: movedPegs.length > 1 ? 1.18 : 1
+      });
+    }
+
+    previousPegSnapshotRef.current = nextPegSnapshot;
+  }, [audio, gameState]);
   
   // UI state
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -812,6 +883,7 @@ const GameController: React.FC<GameControllerProps> = ({
   }, []);
 
   const commitGameOverState = useCallback((terminalState: GameState) => {
+    audio.play('win');
     const gameOverState: GameState = {
       ...terminalState,
       phase: 'gameOver'
@@ -829,7 +901,7 @@ const GameController: React.FC<GameControllerProps> = ({
 
     clearInteractionState();
     setPromptMessage('Game Over!');
-  }, [clearInteractionState, isMultiplayer, onMove, updateGameState]);
+  }, [audio, clearInteractionState, isMultiplayer, onMove, updateGameState]);
 
   // Keep multiplayer snapshots authoritative without remounting the controller.
   useEffect(() => {
@@ -1553,6 +1625,7 @@ const GameController: React.FC<GameControllerProps> = ({
   
   // Handle shuffling and dealing cards
   const handleShuffleAndDeal = () => {
+    audio.play('shuffle');
     setIsShuffling(true);
     
     // Wait for animation to complete before actually shuffling
@@ -1568,11 +1641,13 @@ const GameController: React.FC<GameControllerProps> = ({
   const handleCardSelect = (cardId: string) => {
     // If in multiplayer mode and not current player's turn, do nothing
     if (isMultiplayer && !isCurrentPlayerTurn) {
+      audio.play('invalid');
       return;
     }
     
     // If a card is already selected, reset everything
     if (selectedCardId) {
+      audio.play('ui');
       setPromptMessage('');
       setSelectedCardId('');
       setSelectableSpaceIds([]);
@@ -1585,6 +1660,7 @@ const GameController: React.FC<GameControllerProps> = ({
     // First check for special cards with additional options
     const selectedCard = gameState?.players[gameState?.currentPlayerIndex]?.hand.find(card => card.id === cardId);
     if (selectedCard) {
+      audio.play('card');
       logDebug(`Selected card: ${selectedCard.rank} of ${selectedCard.suit}`);
       
       // Set card as selected
@@ -1620,6 +1696,7 @@ const GameController: React.FC<GameControllerProps> = ({
   
   // Handle nine card option selection (regular move or split)
   const handleNineCardOption = (option: 'move' | 'split') => {
+    audio.play('ui');
     Log(`9 card option selected: ${option}`);
     
     // Regular forward 9 spaces move
@@ -1668,6 +1745,7 @@ const GameController: React.FC<GameControllerProps> = ({
   
   // Handle nine card direction selection
   const handleNineCardDirection = (direction: 'forward' | 'backward') => {
+    audio.play('ui');
     Log(`Nine card direction selected: ${direction}`);
     setNineCardState(prev => ({ 
       ...prev, 
@@ -1680,9 +1758,12 @@ const GameController: React.FC<GameControllerProps> = ({
   // Handle nine card steps selection
   const handleNineCardSteps = (steps: number) => {
     if (steps < 1 || steps > 8) {
+      audio.play('invalid');
       setPromptMessage("Please select a number between 1 and 8");
       return;
     }
+
+    audio.play('ui');
     
     setNineCardState(prev => ({ 
       ...prev, 
@@ -1708,6 +1789,7 @@ const GameController: React.FC<GameControllerProps> = ({
   
   // Handle seven card option selection (move 1 peg or split between 2 pegs)
   const handleSevenCardOption = (option: 'move' | 'split') => {
+    audio.play('ui');
     // Move 7 spaces (straightforward)
     if (option === 'move') {
       if (selectedCardId) {
@@ -1735,8 +1817,11 @@ const GameController: React.FC<GameControllerProps> = ({
   const handleSevenCardSteps = (steps: number) => {
     // Validate steps (must be between 1 and 6)
     if (steps < 1 || steps > 6) {
+      audio.play('invalid');
       return;
     }
+
+    audio.play('ui');
     
     // Calculate remaining steps
     const remainingSteps = 7 - steps;
@@ -2987,6 +3072,7 @@ const GameController: React.FC<GameControllerProps> = ({
   
   // Add this function to handle castle choice
   const handleCastleChoice = (enterCastle: boolean) => {
+    audio.play('ui');
     Log(`Castle choice made: ${enterCastle ? 'Enter Castle' : 'Continue on Board'}`);
     
     // Choose the appropriate move based on player's choice
@@ -3066,12 +3152,14 @@ const GameController: React.FC<GameControllerProps> = ({
   const handlePegSelect = (pegId: string) => {
     // If in multiplayer mode and not current player's turn, do nothing
     if (isMultiplayer && !isCurrentPlayerTurn) {
+      audio.play('invalid');
       return;
     }
     
     // Special handling for dev mode - move pegs feature
     if (devMode && movePegsMode) {
       // In move pegs mode, we allow selecting any peg from any player
+      audio.play('peg-pickup');
       Log(`Dev mode - move pegs: Selected peg ${pegId}`);
       setSelectedPegId(pegId);
       
@@ -3093,15 +3181,19 @@ const GameController: React.FC<GameControllerProps> = ({
   
     // If no card is selected, early return
     if (!selectedCardId) {
+      audio.play('invalid');
       Log(`Peg selected without a card: ${pegId}`);
       return;
     }
     
     const selectedCard = gameState?.players[gameState?.currentPlayerIndex]?.hand.find(card => card.id === selectedCardId);
     if (!selectedCard) {
+      audio.play('invalid');
       Log(`Selected card not found: ${selectedCardId}`);
       return;
     }
+
+    audio.play('peg-pickup');
     
     Log(`handlePegSelect: peg=${pegId}, card=${selectedCard.rank}, sevenCardState=${sevenCardState.state}, nineCardState=${nineCardState.state}`);
     
@@ -3128,11 +3220,13 @@ const GameController: React.FC<GameControllerProps> = ({
         Log(`sevenCardState.selectablePegsForSecondMove:`, sevenCardState.selectablePegsForSecondMove);
         
         if (!isSelectable) {
+          audio.play('invalid');
           setPromptMessage('That peg cannot be moved for the second part of the split.');
           return;
         }
 
         if (pegId === sevenCardState.firstMovePegId) {
+          audio.play('invalid');
           setPromptMessage('You must choose a different peg for the second move.');
           return;
         }
@@ -3157,6 +3251,7 @@ const GameController: React.FC<GameControllerProps> = ({
       Log(`Regular moves: ${regularMoves.length}, Castle moves: ${castleMoves.length}`);
       
       if (pegMoves.length === 0) {
+        audio.play('invalid');
         setPromptMessage("No valid moves for this peg with the selected card");
         setSelectedCardId('');
         return;
@@ -3231,6 +3326,7 @@ const GameController: React.FC<GameControllerProps> = ({
         Log(`Found ${pegMoves.length} possible moves for peg ${pegId} with regular 9 card move`);
         
         if (pegMoves.length === 0) {
+          audio.play('invalid');
           setPromptMessage("No valid moves for this peg with the selected card");
           return;
         }
@@ -3285,11 +3381,13 @@ const GameController: React.FC<GameControllerProps> = ({
       Log(`nineCardState.selectablePegsForSecondMove:`, nineCardState.selectablePegsForSecondMove);
       
       if (!isSelectable) {
+        audio.play('invalid');
         setPromptMessage('That peg cannot be moved for the second part of the split.');
         return;
       }
 
       if (pegId === nineCardState.firstMovePegId) {
+        audio.play('invalid');
         setPromptMessage('You must choose a different peg for the second move.');
         return;
       }
@@ -3323,6 +3421,7 @@ const GameController: React.FC<GameControllerProps> = ({
       Log(`Will land on castle entrance? ${willLandOnCastleEntrance}`);
       
       if (pegMoves.length === 0) {
+        audio.play('invalid');
         setPromptMessage("No valid moves for this peg with the selected card");
         setSelectedCardId(null);
         return;
@@ -3579,6 +3678,7 @@ const GameController: React.FC<GameControllerProps> = ({
       // End the player's turn
       handleEndTurn(newState);
     } else {
+      audio.play('invalid');
       logDebug(`Invalid space selection: ${spaceId} - either no peg selected or space not selectable`);
     }
   };
@@ -3634,6 +3734,7 @@ const GameController: React.FC<GameControllerProps> = ({
 
   // Add this function to handle discarding and redrawing
   const handleDiscardAndRedraw = () => {
+    audio.play('shuffle');
     const newState = { ...gameState };
     const player = newState.players[newState.currentPlayerIndex];
     
@@ -3664,6 +3765,7 @@ const GameController: React.FC<GameControllerProps> = ({
   
   // Function to shuffle the current player's hand (dev mode)
   const handleShuffleHand = () => {
+    audio.play('shuffle');
     const newState = { ...gameState };
     const player = newState.players[newState.currentPlayerIndex];
     
@@ -3746,6 +3848,7 @@ const GameController: React.FC<GameControllerProps> = ({
   
   // Add a new function to handle skipping the second move
   const handleSkipSecondMove = () => {
+    audio.play('ui');
     setPromptMessage('You have chosen to skip your second move.');
     setNineCardState({ state: 'INITIAL', firstMoveComplete: false });
     
@@ -3756,6 +3859,7 @@ const GameController: React.FC<GameControllerProps> = ({
 
   // Add handler for revealing hand
   const handleRevealHand = () => {
+    audio.play('reveal');
     setShowCards(true);
   };
 
@@ -3780,7 +3884,10 @@ const GameController: React.FC<GameControllerProps> = ({
                     type="checkbox"
                     checked={devMode}
                     data-testid="dev-mode-toggle"
-                    onChange={() => setDevMode(!devMode)}
+                    onChange={() => {
+                      audio.play('ui');
+                      setDevMode(!devMode);
+                    }}
                   />
                   <span className="dev-slider"></span>
                   <span className="dev-label">Dev Mode</span>
@@ -3799,7 +3906,10 @@ const GameController: React.FC<GameControllerProps> = ({
                     <button
                       className={`dev-button move-pegs-button ${movePegsMode ? 'active' : ''}`}
                       data-testid="dev-edit-pegs"
-                      onClick={() => setMovePegsMode(!movePegsMode)}
+                      onClick={() => {
+                        audio.play('ui');
+                        setMovePegsMode(!movePegsMode);
+                      }}
                     >
                       {movePegsMode ? 'Exit Peg Edit Mode' : 'Edit Peg Positions'}
                     </button>
@@ -3807,7 +3917,10 @@ const GameController: React.FC<GameControllerProps> = ({
                     <button
                       className={`dev-button preserve-play-button ${preservePlayMode ? 'active' : ''}`}
                       data-testid="dev-auto-end-turn"
-                      onClick={() => setPreservePlayMode(!preservePlayMode)}
+                      onClick={() => {
+                        audio.play('ui');
+                        setPreservePlayMode(!preservePlayMode);
+                      }}
                     >
                       {preservePlayMode ? 'Auto End Turn Off' : 'Auto End Turn On'}
                     </button>

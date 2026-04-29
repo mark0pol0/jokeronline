@@ -6,7 +6,9 @@ import SetupScreen from './components/SetupScreen/SetupScreen';
 import OnlineMenu from './components/Multiplayer/OnlineMenu';
 import MultiplayerGameController from './components/Multiplayer/MultiplayerGameController';
 import PWAInstallPrompt from './components/PWA/PWAInstallPrompt';
+import AudioControls from './components/Audio/AudioControls';
 import { useMultiplayer } from './context/MultiplayerContext';
+import { useGameAudio } from './context/GameAudioContext';
 
 // Available colors for player selection
 const PLAYER_COLORS = [
@@ -54,6 +56,7 @@ const getInitialEasyMode = (): boolean => {
 const App: React.FC = () => {
   // Get multiplayer state
   const { isGameStarted, isOnlineMode } = useMultiplayer();
+  const { startHomeMusic, stopHomeMusic, unlock, play } = useGameAudio();
   const [linkRoomCode] = useState<string | null>(() => getInitialLinkRoomCode());
   const [easyMode, setEasyMode] = useState<boolean>(() => getInitialEasyMode());
   
@@ -95,6 +98,37 @@ const App: React.FC = () => {
       console.error('Failed to persist easy mode preference', error);
     }
   }, [easyMode]);
+
+  useEffect(() => {
+    if (gamePhase === 'home') {
+      startHomeMusic();
+    } else {
+      stopHomeMusic();
+    }
+
+    return () => {
+      stopHomeMusic();
+    };
+  }, [gamePhase, startHomeMusic, stopHomeMusic]);
+
+  useEffect(() => {
+    if (gamePhase !== 'home' || typeof window === 'undefined') {
+      return;
+    }
+
+    const handleFirstGesture = async () => {
+      await unlock();
+      startHomeMusic();
+    };
+
+    window.addEventListener('pointerdown', handleFirstGesture, { once: true });
+    window.addEventListener('keydown', handleFirstGesture, { once: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', handleFirstGesture);
+      window.removeEventListener('keydown', handleFirstGesture);
+    };
+  }, [gamePhase, startHomeMusic, unlock]);
 
   const addPlayer = () => {
     if (playerNames.length < 8) {
@@ -156,22 +190,31 @@ const App: React.FC = () => {
   };
 
   const handleStartOnlineGame = () => {
+    play('ui');
     setGamePhase('online');
   };
 
   const handleReturnToHome = () => {
+    play('ui');
     setGamePhase('home');
   };
 
   return (
     <div className="App">
+      <AudioControls />
       {gamePhase !== 'playing' && gamePhase !== 'online-playing' && <PWAInstallPrompt />}
       {gamePhase === 'home' && (
         <HomeMenu 
-          onStartGame={() => setGamePhase('setup')} 
+          onStartGame={() => {
+            play('ui');
+            setGamePhase('setup');
+          }}
           onStartOnlineGame={handleStartOnlineGame}
           easyMode={easyMode}
-          onToggleEasyMode={() => setEasyMode(current => !current)}
+          onToggleEasyMode={() => {
+            play('ui');
+            setEasyMode(current => !current);
+          }}
         />
       )}
       {gamePhase === 'setup' && (
@@ -186,8 +229,14 @@ const App: React.FC = () => {
           onAddPlayer={addPlayer}
           onRemovePlayer={removePlayer}
           onToggleTeamMode={toggleTeamMode}
-          onStartGame={() => setGamePhase('playing')}
-          onBack={() => setGamePhase('home')}
+          onStartGame={() => {
+            play('reveal');
+            setGamePhase('playing');
+          }}
+          onBack={() => {
+            play('ui');
+            setGamePhase('home');
+          }}
         />
       )}
       {gamePhase === 'playing' && (

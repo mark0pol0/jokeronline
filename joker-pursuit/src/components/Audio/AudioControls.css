@@ -1,0 +1,56 @@
+.audio-controls {
+  position: fixed;
+  top: max(14px, env(safe-area-inset-top));
+  right: max(14px, env(safe-area-inset-right));
+  z-index: 50;
+  display: flex;
+  gap: 8px;
+  padding: 7px;
+  border: 1px solid rgba(72, 95, 122, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 10px 24px rgba(12, 22, 36, 0.16);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.audio-control-button {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(85, 107, 130, 0.24);
+  border-radius: 50%;
+  background: linear-gradient(160deg, #ffffff 0%, #edf4f8 100%);
+  color: #4c637a;
+  font-family: var(--font-display);
+  font-size: 1.08rem;
+  line-height: 1;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+  transition: transform 160ms ease, border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+
+.audio-control-button:hover {
+  transform: translateY(-1px);
+}
+
+.audio-control-button.active {
+  border-color: rgba(15, 107, 116, 0.38);
+  background: linear-gradient(160deg, #f2fbf9 0%, #dcefee 100%);
+  color: #0f6b74;
+}
+
+@media (max-width: 700px) {
+  .audio-controls {
+    top: max(10px, env(safe-area-inset-top));
+    right: max(10px, env(safe-area-inset-right));
+    gap: 6px;
+    padding: 6px;
+  }
+
+  .audio-control-button {
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+  }
+}

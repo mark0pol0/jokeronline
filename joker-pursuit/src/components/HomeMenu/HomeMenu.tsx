@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createFloatingDecorElements, FloatingDecorElement } from '../../utils/floatingDecor';
+import { useGameAudio } from '../../context/GameAudioContext';
 import './HomeMenu.css';
 
 interface HomeMenuProps {
@@ -17,6 +18,7 @@ const HomeMenu: React.FC<HomeMenuProps> = ({
 }) => {
   const [floatingElements, setFloatingElements] = useState<FloatingDecorElement[]>([]);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
+  const { play } = useGameAudio();
 
   useEffect(() => {
     setFloatingElements(createFloatingDecorElements());
@@ -62,7 +64,10 @@ const HomeMenu: React.FC<HomeMenuProps> = ({
           
           <button 
             className="skeuomorphic-button secondary-button" 
-            onClick={() => setShowHowToPlay(true)}
+            onClick={() => {
+              play('ui');
+              setShowHowToPlay(true);
+            }}
           >
             <span className="button-text">How to Play</span>
             <div className="button-shine"></div>
@@ -90,7 +95,13 @@ const HomeMenu: React.FC<HomeMenuProps> = ({
 
       {/* How to Play Modal */}
       {showHowToPlay && (
-        <div className="modal-overlay" onClick={() => setShowHowToPlay(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            play('ui');
+            setShowHowToPlay(false);
+          }}
+        >
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <h2>How to Play</h2>
             <div className="modal-body">
@@ -133,7 +144,10 @@ const HomeMenu: React.FC<HomeMenuProps> = ({
             </div>
             <button 
               className="modal-close-button"
-              onClick={() => setShowHowToPlay(false)}
+              onClick={() => {
+                play('ui');
+                setShowHowToPlay(false);
+              }}
             >
               Got it!
             </button>
