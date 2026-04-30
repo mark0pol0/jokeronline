@@ -232,7 +232,7 @@ const App: React.FC = () => {
   return (
     <div className={`App theme-${visualTheme}`} data-visual-theme={visualTheme}>
       <AudioControls />
-      {gamePhase !== 'playing' && gamePhase !== 'online-playing' && (
+      {gamePhase !== 'online-playing' && (
         <AppearanceSettings
           visualTheme={visualTheme}
           onChangeTheme={(nextTheme) => {

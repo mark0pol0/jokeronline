@@ -259,6 +259,71 @@
     0 0 16px rgba(255, 220, 167, 0.56);
 }
 
+.theme-parlor .board-orientation-controls {
+  border-radius: 8px;
+  border-color: rgba(235, 202, 146, 0.26);
+  background:
+    linear-gradient(90deg, rgba(236, 199, 139, 0.05) 1px, transparent 1px),
+    linear-gradient(160deg, rgba(66, 38, 23, 0.9), rgba(39, 24, 16, 0.86));
+  background-size: 18px 18px, auto;
+  box-shadow: 0 8px 22px rgba(17, 10, 6, 0.34);
+}
+
+.theme-parlor .board-control-label {
+  color: #f7e7c7;
+}
+
+.theme-parlor .board-orientation-button {
+  border-radius: 6px;
+  border-color: rgba(235, 202, 146, 0.32);
+  background: linear-gradient(180deg, #fff4d8, #d7b36f);
+  color: #432817;
+  box-shadow: 0 2px 6px rgba(17, 10, 6, 0.28);
+}
+
+.theme-parlor .board-background-circle {
+  background:
+    radial-gradient(circle at 50% 35%, #fff7e7 0%, #f0d9a8 56%, #c99551 100%);
+  border-color: rgba(92, 52, 24, 0.38);
+  box-shadow:
+    0 24px 42px rgba(17, 10, 6, 0.32),
+    inset 0 2px 8px rgba(255, 248, 232, 0.78),
+    inset 0 -20px 42px rgba(103, 58, 27, 0.16);
+}
+
+.theme-parlor .board::before {
+  border-color: rgba(96, 57, 28, 0.22);
+}
+
+.theme-parlor .board-space {
+  border-color: rgba(255, 246, 225, 0.82);
+  box-shadow: 0 4px 8px rgba(17, 10, 6, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.theme-parlor .space-normal {
+  background: linear-gradient(145deg, #56341f 0%, #321f14 100%);
+}
+
+.theme-parlor .space-corner {
+  background: linear-gradient(145deg, #bf8b38 0%, #80551f 100%);
+}
+
+.theme-parlor .space-castle {
+  background: linear-gradient(145deg, #3f8d58 0%, #275f3a 100%);
+}
+
+.theme-parlor .space-home {
+  background: linear-gradient(145deg, #2f716a 0%, #1d4e49 100%);
+}
+
+.theme-parlor .space-entrance {
+  background: linear-gradient(145deg, #a85f31 0%, #743919 100%);
+}
+
+.theme-parlor .space-connector {
+  background: linear-gradient(145deg, #8b6230 0%, #58391d 100%);
+}
+
 .peg.in-selectable-space {
   border-color: rgba(255, 242, 218, 0.95);
 }

@@ -727,6 +727,163 @@
   box-shadow: 0 10px 18px rgba(16, 59, 74, 0.26);
 }
 
+.theme-parlor .game-controller {
+  background:
+    radial-gradient(90% 70% at 50% 0%, rgba(236, 205, 151, 0.2) 0%, rgba(236, 205, 151, 0) 62%),
+    linear-gradient(90deg, rgba(238, 207, 155, 0.04) 1px, transparent 1px),
+    linear-gradient(rgba(238, 207, 155, 0.035) 1px, transparent 1px),
+    linear-gradient(145deg, #3d2114 0%, #26170f 56%, #16100c 100%);
+  background-size: auto, 42px 42px, 42px 42px, auto;
+}
+
+.theme-parlor .top-panel {
+  border-color: rgba(235, 202, 146, 0.26);
+  background:
+    linear-gradient(90deg, rgba(236, 199, 139, 0.05) 1px, transparent 1px),
+    linear-gradient(165deg, rgba(68, 38, 22, 0.88), rgba(39, 24, 16, 0.82));
+  background-size: 20px 20px, auto;
+  box-shadow: 0 16px 28px rgba(17, 10, 6, 0.38);
+}
+
+.theme-parlor .player-turn-indicator,
+.theme-parlor .zoom-controls,
+.theme-parlor .dev-switch,
+.theme-parlor .dev-controls-group,
+.theme-parlor .prompt-message,
+.theme-parlor .nine-card-controls,
+.theme-parlor .seven-card-controls,
+.theme-parlor .castle-choice-controls,
+.theme-parlor .skip-second-move {
+  border-radius: 8px;
+  border-color: rgba(235, 202, 146, 0.26);
+  background:
+    linear-gradient(90deg, rgba(236, 199, 139, 0.05) 1px, transparent 1px),
+    linear-gradient(160deg, rgba(66, 38, 23, 0.9), rgba(39, 24, 16, 0.86));
+  background-size: 18px 18px, auto;
+  color: #fff0d5;
+}
+
+.theme-parlor .player-turn-indicator {
+  color: color-mix(in srgb, var(--turn-color, #d9edf8) 78%, #fff0d5 22%);
+  text-shadow: 0 2px 8px rgba(17, 10, 6, 0.58);
+}
+
+.theme-parlor .board-area::before {
+  inset: 7% 15% 4%;
+  background:
+    radial-gradient(circle, rgba(255, 237, 196, 0.16) 0%, rgba(255, 237, 196, 0) 58%),
+    radial-gradient(circle, rgba(39, 24, 16, 0.72) 0%, rgba(39, 24, 16, 0) 74%);
+}
+
+.theme-parlor .game-container .floating-element {
+  opacity: 0.1;
+  filter: sepia(0.5);
+}
+
+.theme-parlor .game-container .floating-element.card {
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(255, 247, 231, 0.72), rgba(224, 190, 126, 0.48));
+  border-color: rgba(238, 207, 155, 0.2);
+}
+
+.theme-parlor .zoom-button,
+.theme-parlor .nine-card-controls button,
+.theme-parlor .seven-card-controls button,
+.theme-parlor .castle-choice-button,
+.theme-parlor .skip-second-move button,
+.theme-parlor .dev-button {
+  border-radius: 8px;
+  border-color: rgba(235, 202, 146, 0.32);
+  background: rgba(255, 238, 202, 0.1);
+  color: #fff0d5;
+}
+
+.theme-parlor .zoom-button:hover,
+.theme-parlor .nine-card-controls button:hover,
+.theme-parlor .seven-card-controls button:hover,
+.theme-parlor .castle-choice-button:hover,
+.theme-parlor .skip-second-move button:hover,
+.theme-parlor .dev-button:hover {
+  background: rgba(255, 238, 202, 0.18);
+}
+
+.theme-parlor .zoom-control-label,
+.theme-parlor .zoom-level,
+.theme-parlor .dev-label,
+.theme-parlor .multiplayer-hand-caption,
+.theme-parlor .steps-input p,
+.theme-parlor .skip-second-move {
+  color: #f7e7c7;
+}
+
+.theme-parlor .bottom-panel::before {
+  border-radius: 12px;
+  border-color: rgba(235, 202, 146, 0.18);
+  background:
+    linear-gradient(90deg, rgba(236, 199, 139, 0.04) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(39, 24, 16, 0.04), rgba(39, 24, 16, 0.28));
+  background-size: 20px 20px, auto;
+  box-shadow: 0 -10px 24px rgba(17, 10, 6, 0.28);
+}
+
+.theme-parlor .reveal-hand-button,
+.theme-parlor .castle-choice-button.enter,
+.theme-parlor .game-over-modal button {
+  border-radius: 8px;
+  background: linear-gradient(160deg, #167168 0%, #0d4c46 100%);
+  box-shadow: 0 10px 18px rgba(17, 10, 6, 0.24);
+}
+
+.theme-parlor .discard-hand-button,
+.theme-parlor .castle-choice-button.continue,
+.theme-parlor .shuffle-button {
+  border-radius: 8px;
+  background: linear-gradient(160deg, #9a5428 0%, #743919 100%);
+  box-shadow: 0 10px 18px rgba(17, 10, 6, 0.28);
+}
+
+.theme-parlor .welcome-overlay {
+  background:
+    linear-gradient(90deg, rgba(81, 45, 22, 0.045) 1px, transparent 1px),
+    linear-gradient(rgba(81, 45, 22, 0.045) 1px, transparent 1px),
+    radial-gradient(100% 80% at 50% 0%, rgba(255, 243, 216, 0.76) 0%, rgba(255, 243, 216, 0) 58%),
+    linear-gradient(145deg, #ead2a3 0%, #c69a5f 58%, #8f5e34 100%);
+  background-size: 34px 34px, 34px 34px, auto, auto;
+  color: #442d1e;
+}
+
+.theme-parlor .welcome-modal,
+.theme-parlor .game-over-modal {
+  border-radius: 14px;
+  border-color: rgba(105, 66, 34, 0.3);
+  background:
+    linear-gradient(90deg, rgba(102, 64, 31, 0.035) 1px, transparent 1px),
+    linear-gradient(#fff8e9, #f5e2bd);
+  background-size: 22px 22px, auto;
+  box-shadow: 0 22px 38px rgba(64, 35, 16, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.34);
+  color: #442d1e;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.theme-parlor .welcome-modal h1,
+.theme-parlor .game-over-modal h2 {
+  color: #4a2b19;
+  letter-spacing: 0;
+}
+
+.theme-parlor .welcome-modal p,
+.theme-parlor .game-over-modal p {
+  color: #756048;
+}
+
+.theme-parlor .card-deck,
+.theme-parlor .shuffle-card {
+  border-radius: 8px;
+  border-color: rgba(106, 67, 34, 0.26);
+  background: linear-gradient(145deg, #fff7e7, #ead4aa);
+}
+
 @keyframes game-float {
   from {
     transform:
