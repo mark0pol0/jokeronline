@@ -56,15 +56,15 @@ const getInitialEasyMode = (): boolean => {
 
 const getInitialVisualTheme = (): VisualTheme => {
   if (typeof window === 'undefined') {
-    return 'modern';
+    return 'parlor';
   }
 
   try {
     const storedTheme = window.localStorage.getItem(VISUAL_THEME_STORAGE_KEY);
-    return storedTheme === 'parlor' ? 'parlor' : 'modern';
+    return storedTheme === 'modern' ? 'modern' : 'parlor';
   } catch (error) {
     console.error('Failed to read visual theme preference', error);
-    return 'modern';
+    return 'parlor';
   }
 };
 
