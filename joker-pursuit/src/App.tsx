@@ -7,6 +7,7 @@ import OnlineMenu from './components/Multiplayer/OnlineMenu';
 import MultiplayerGameController from './components/Multiplayer/MultiplayerGameController';
 import PWAInstallPrompt from './components/PWA/PWAInstallPrompt';
 import AudioControls from './components/Audio/AudioControls';
+import AppearanceSettings, { VisualTheme } from './components/Settings/AppearanceSettings';
 import { useMultiplayer } from './context/MultiplayerContext';
 import { useGameAudio } from './context/GameAudioContext';
 
@@ -24,6 +25,7 @@ const PLAYER_COLORS = [
 
 type GamePhase = 'home' | 'setup' | 'playing' | 'online' | 'online-playing';
 const EASY_MODE_STORAGE_KEY = 'joker-pursuit.easy-mode';
+const VISUAL_THEME_STORAGE_KEY = 'joker-pursuit.visual-theme';
 
 const getInitialLinkRoomCode = (): string | null => {
   if (typeof window === 'undefined') {
@@ -52,6 +54,20 @@ const getInitialEasyMode = (): boolean => {
   }
 };
 
+const getInitialVisualTheme = (): VisualTheme => {
+  if (typeof window === 'undefined') {
+    return 'modern';
+  }
+
+  try {
+    const storedTheme = window.localStorage.getItem(VISUAL_THEME_STORAGE_KEY);
+    return storedTheme === 'parlor' ? 'parlor' : 'modern';
+  } catch (error) {
+    console.error('Failed to read visual theme preference', error);
+    return 'modern';
+  }
+};
+
 // Main App component
 const App: React.FC = () => {
   // Get multiplayer state
@@ -59,6 +75,7 @@ const App: React.FC = () => {
   const { startHomeMusic, stopHomeMusic, unlock, play } = useGameAudio();
   const [linkRoomCode] = useState<string | null>(() => getInitialLinkRoomCode());
   const [easyMode, setEasyMode] = useState<boolean>(() => getInitialEasyMode());
+  const [visualTheme, setVisualTheme] = useState<VisualTheme>(() => getInitialVisualTheme());
   
   // State
   const [gamePhase, setGamePhase] = useState<GamePhase>('home');
@@ -98,6 +115,19 @@ const App: React.FC = () => {
       console.error('Failed to persist easy mode preference', error);
     }
   }, [easyMode]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(VISUAL_THEME_STORAGE_KEY, visualTheme);
+      document.body.dataset.visualTheme = visualTheme;
+    } catch (error) {
+      console.error('Failed to persist visual theme preference', error);
+    }
+  }, [visualTheme]);
 
   useEffect(() => {
     if (gamePhase === 'home') {
@@ -200,8 +230,17 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="App">
+    <div className={`App theme-${visualTheme}`} data-visual-theme={visualTheme}>
       <AudioControls />
+      {gamePhase !== 'playing' && gamePhase !== 'online-playing' && (
+        <AppearanceSettings
+          visualTheme={visualTheme}
+          onChangeTheme={(nextTheme) => {
+            play('ui');
+            setVisualTheme(nextTheme);
+          }}
+        />
+      )}
       {gamePhase !== 'playing' && gamePhase !== 'online-playing' && <PWAInstallPrompt />}
       {gamePhase === 'home' && (
         <HomeMenu 

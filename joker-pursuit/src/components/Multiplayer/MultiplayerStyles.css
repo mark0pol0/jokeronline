@@ -1210,6 +1210,235 @@
   }
 }
 
+.theme-parlor .multiplayer-shell {
+  background:
+    linear-gradient(90deg, rgba(81, 45, 22, 0.045) 1px, transparent 1px),
+    linear-gradient(rgba(81, 45, 22, 0.045) 1px, transparent 1px),
+    radial-gradient(100% 80% at 50% 0%, rgba(255, 243, 216, 0.76) 0%, rgba(255, 243, 216, 0) 58%),
+    linear-gradient(145deg, #ead2a3 0%, #c69a5f 58%, #8f5e34 100%);
+  background-size: 34px 34px, 34px 34px, auto, auto;
+  color: #442d1e;
+}
+
+.theme-parlor .multiplayer-container,
+.theme-parlor .loading-screen,
+.theme-parlor .shuffling-screen,
+.theme-parlor .color-selection-screen {
+  border-radius: 14px;
+  border-color: rgba(105, 66, 34, 0.3);
+  background:
+    linear-gradient(90deg, rgba(102, 64, 31, 0.035) 1px, transparent 1px),
+    linear-gradient(#fff8e9, #f5e2bd);
+  background-size: 22px 22px, auto;
+  box-shadow: 0 22px 38px rgba(64, 35, 16, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.34);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: #442d1e;
+}
+
+.theme-parlor .multiplayer-container h2,
+.theme-parlor .loading-screen h2,
+.theme-parlor .shuffling-screen h2,
+.theme-parlor .color-selection-screen h2 {
+  color: #4a2b19;
+  letter-spacing: 0;
+}
+
+.theme-parlor .multiplayer-lead,
+.theme-parlor .helper-text,
+.theme-parlor .room-code-display p {
+  color: #756048;
+}
+
+.theme-parlor .multiplayer-shell .skeuomorphic-button,
+.theme-parlor .multiplayer-game-controller .skeuomorphic-button,
+.theme-parlor .connection-modal .skeuomorphic-button {
+  border-radius: 8px;
+  box-shadow: 0 10px 18px rgba(66, 39, 20, 0.22), inset 0 1px 0 rgba(255, 244, 217, 0.28);
+}
+
+.theme-parlor .multiplayer-shell .primary-button,
+.theme-parlor .multiplayer-game-controller .primary-button,
+.theme-parlor .connection-modal .primary-button {
+  background: linear-gradient(160deg, #167168 0%, #0d4c46 100%);
+}
+
+.theme-parlor .multiplayer-shell .secondary-button,
+.theme-parlor .multiplayer-game-controller .secondary-button,
+.theme-parlor .connection-modal .secondary-button {
+  background: linear-gradient(160deg, #806b56 0%, #5f4937 100%);
+}
+
+.theme-parlor .leave-action-button {
+  background: linear-gradient(160deg, #9a5428 0%, #743919 100%) !important;
+}
+
+.theme-parlor .form-group label,
+.theme-parlor .modal-label {
+  color: #5e4029;
+}
+
+.theme-parlor .form-group input,
+.theme-parlor .modal-input {
+  border-color: rgba(111, 74, 40, 0.34);
+  border-radius: 8px;
+  background: rgba(255, 250, 239, 0.9);
+  color: #432b1c;
+}
+
+.theme-parlor .form-group input:focus,
+.theme-parlor .modal-input:focus {
+  border-color: rgba(17, 100, 91, 0.58);
+  box-shadow: 0 0 0 3px rgba(17, 100, 91, 0.14);
+}
+
+.theme-parlor .easy-room-code-summary,
+.theme-parlor .easy-joined-confirmation,
+.theme-parlor .room-code-display,
+.theme-parlor .waiting-player-list,
+.theme-parlor .connection-banner,
+.theme-parlor .player-color-status,
+.theme-parlor .color-picker-panel,
+.theme-parlor .selected-color-message {
+  border-radius: 10px;
+  border-color: rgba(106, 67, 34, 0.28);
+  background: rgba(255, 250, 238, 0.72);
+  box-shadow: 0 8px 16px rgba(66, 39, 20, 0.1);
+}
+
+.theme-parlor .room-code-display h3,
+.theme-parlor .waiting-player-list h3,
+.theme-parlor .player-color-status h3,
+.theme-parlor .color-picker-panel h3 {
+  color: #5c3a21;
+}
+
+.theme-parlor .code-box {
+  border-radius: 8px;
+  border-color: rgba(106, 67, 34, 0.3);
+  background:
+    linear-gradient(90deg, rgba(102, 64, 31, 0.045) 1px, transparent 1px),
+    linear-gradient(#fff6e3, #ecd2a1);
+  background-size: 18px 18px, auto;
+  color: #4a2b19;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 8px 14px rgba(67, 39, 19, 0.14);
+}
+
+.theme-parlor .waiting-player-list li,
+.theme-parlor .player-color-row {
+  border-radius: 8px;
+  border-color: rgba(123, 82, 43, 0.24);
+  background: rgba(255, 247, 230, 0.7);
+  color: #442d1e;
+}
+
+.theme-parlor .waiting-player-name,
+.theme-parlor .player-name {
+  color: #442d1e;
+}
+
+.theme-parlor .status-pill,
+.theme-parlor .link-button {
+  border-radius: 999px;
+  border-color: rgba(112, 75, 40, 0.28);
+  background: rgba(255, 245, 221, 0.78);
+  color: #5a3b24;
+}
+
+.theme-parlor .connection-banner.connected .status-pill {
+  background: rgba(54, 123, 78, 0.14);
+  color: #2e6b44;
+}
+
+.theme-parlor .server-url,
+.theme-parlor .connection-modal-description {
+  color: #705a43;
+}
+
+.theme-parlor .connection-modal-card {
+  border-radius: 14px;
+  border-color: rgba(115, 75, 37, 0.28);
+  background:
+    linear-gradient(90deg, rgba(102, 64, 31, 0.035) 1px, transparent 1px),
+    linear-gradient(#fff8e9, #f4dfb7);
+  background-size: 22px 22px, auto;
+}
+
+.theme-parlor .connection-modal-title {
+  color: #4a2b19;
+}
+
+.theme-parlor .multiplayer-game-controller {
+  background:
+    radial-gradient(90% 70% at 50% 0%, rgba(236, 205, 151, 0.2) 0%, rgba(236, 205, 151, 0) 62%),
+    linear-gradient(90deg, rgba(238, 207, 155, 0.04) 1px, transparent 1px),
+    linear-gradient(rgba(238, 207, 155, 0.035) 1px, transparent 1px),
+    linear-gradient(145deg, #3d2114 0%, #26170f 56%, #16100c 100%);
+  background-size: auto, 42px 42px, 42px 42px, auto;
+}
+
+.theme-parlor .game-header {
+  border-radius: 12px;
+  border-color: rgba(235, 202, 146, 0.26);
+  background:
+    linear-gradient(90deg, rgba(236, 199, 139, 0.05) 1px, transparent 1px),
+    linear-gradient(165deg, rgba(68, 38, 22, 0.88), rgba(39, 24, 16, 0.82));
+  background-size: 20px 20px, auto;
+  box-shadow: 0 16px 28px rgba(17, 10, 6, 0.38);
+}
+
+.theme-parlor .mobile-match-menu-button {
+  border-radius: 8px;
+  border-color: rgba(235, 202, 146, 0.34);
+  background: rgba(255, 238, 202, 0.1);
+  color: #fff0d5;
+}
+
+.theme-parlor .room-meta-label {
+  color: rgba(255, 235, 196, 0.76);
+}
+
+.theme-parlor .room-code-chip,
+.theme-parlor .game-player-chip {
+  border-radius: 8px;
+  border-color: rgba(235, 202, 146, 0.24);
+  background: rgba(255, 238, 202, 0.1);
+  color: #fff0d5;
+}
+
+.theme-parlor .game-player-chip.is-turn {
+  border-color: rgba(214, 166, 82, 0.54);
+  background: rgba(154, 84, 40, 0.28);
+}
+
+.theme-parlor .chip-player-name {
+  color: #fff2da;
+}
+
+.theme-parlor .player-waiting-overlay {
+  border-radius: 8px;
+  box-shadow: 0 12px 22px color-mix(in srgb, var(--turn-popup-color, #5b3a24) 36%, black 64%);
+}
+
+.theme-parlor .opponent-play-panel {
+  border-radius: 8px;
+  border-color: rgba(235, 202, 146, 0.24);
+  background:
+    linear-gradient(90deg, rgba(236, 199, 139, 0.05) 1px, transparent 1px),
+    linear-gradient(160deg, rgba(66, 38, 23, 0.9), rgba(39, 24, 16, 0.86));
+  background-size: 18px 18px, auto;
+}
+
+.theme-parlor .opponent-play-card {
+  border-radius: 8px;
+  background: #fff8e8;
+}
+
+.theme-parlor .loading-spinner {
+  border-color: rgba(116, 75, 37, 0.18);
+  border-top-color: #11645b;
+}
+
 @media (max-width: 900px) {
   .game-header {
     width: calc(100% - 12px);

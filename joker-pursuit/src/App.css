@@ -6,3 +6,28 @@
   overflow: hidden;
   font-family: var(--font-body);
 }
+
+.App.theme-parlor {
+  --font-display: Georgia, 'Times New Roman', serif;
+  --font-body: 'Manrope', 'Avenir Next', 'Segoe UI', sans-serif;
+  --ink-strong: #3f2c20;
+  --ink-muted: #735f4f;
+  --surface: rgba(255, 248, 232, 0.82);
+  --surface-strong: rgba(255, 251, 241, 0.95);
+  --surface-border: rgba(132, 88, 48, 0.26);
+  --surface-dark: rgba(59, 34, 20, 0.82);
+  --surface-dark-strong: rgba(39, 24, 16, 0.9);
+  --surface-dark-border: rgba(236, 206, 151, 0.26);
+  --ink-on-dark: #fff3dd;
+  --ink-on-dark-muted: #e8d0aa;
+  --brand: #11645b;
+  --brand-strong: #0d4c46;
+  --accent: #9a5428;
+  --accent-strong: #773b1b;
+  --success: #3b7f4d;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-soft: 0 10px 22px rgba(74, 45, 24, 0.13);
+  --shadow-medium: 0 16px 34px rgba(72, 42, 20, 0.2);
+}
