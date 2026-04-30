@@ -6,6 +6,7 @@ export type VisualTheme = 'modern' | 'parlor';
 interface AppearanceSettingsProps {
   visualTheme: VisualTheme;
   onChangeTheme: (theme: VisualTheme) => void;
+  variant?: 'fixed' | 'inline';
 }
 
 const THEMES: Array<{
@@ -27,12 +28,13 @@ const THEMES: Array<{
 
 const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
   visualTheme,
-  onChangeTheme
+  onChangeTheme,
+  variant = 'fixed'
 }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className="appearance-settings">
+    <div className={`appearance-settings ${variant}`}>
       <button
         type="button"
         className="appearance-trigger"

@@ -294,7 +294,14 @@ const App: React.FC = () => {
         />
       )}
       {gamePhase === 'online-playing' && (
-        <MultiplayerGameController onBack={handleReturnToHome} />
+        <MultiplayerGameController
+          onBack={handleReturnToHome}
+          visualTheme={visualTheme}
+          onChangeTheme={(nextTheme) => {
+            play('ui');
+            setVisualTheme(nextTheme);
+          }}
+        />
       )}
     </div>
   );

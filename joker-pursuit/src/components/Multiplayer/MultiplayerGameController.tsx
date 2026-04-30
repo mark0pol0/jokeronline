@@ -5,10 +5,13 @@ import { GameState } from '../../models/GameState';
 import { createBoard } from '../../models/BoardModel';
 import { Card, Rank, Suit, createDecks, shuffleDeck } from '../../models/Card';
 import GameController from '../Game/GameController';
+import AppearanceSettings, { VisualTheme } from '../Settings/AppearanceSettings';
 import './MultiplayerStyles.css';
 
 interface MultiplayerGameControllerProps {
   onBack: () => void;
+  visualTheme?: VisualTheme;
+  onChangeTheme?: (theme: VisualTheme) => void;
 }
 
 const PLAYER_COLORS = [
@@ -265,7 +268,11 @@ const getReadableTextColor = (backgroundColor?: string): string => {
   return brightness >= 160 ? '#10202f' : '#f1f8ff';
 };
 
-const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ onBack }) => {
+const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({
+  onBack,
+  visualTheme = 'modern',
+  onChangeTheme = () => undefined
+}) => {
   const { serverUrl } = useSocket();
   const {
     isOnlineMode,
@@ -1172,6 +1179,11 @@ const MultiplayerGameController: React.FC<MultiplayerGameControllerProps> = ({ o
                 {isMatchMenuOpen ? 'Hide Menu' : 'Match Menu'}
               </button>
               <div className="header-action-group">
+                <AppearanceSettings
+                  variant="inline"
+                  visualTheme={visualTheme}
+                  onChangeTheme={onChangeTheme}
+                />
                 <button
                   type="button"
                   className="skeuomorphic-button secondary-button header-action-button"

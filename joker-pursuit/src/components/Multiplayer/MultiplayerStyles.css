@@ -1566,6 +1566,15 @@
     gap: 6px;
   }
 
+  .game-header.expanded .appearance-settings.inline,
+  .game-header.expanded .appearance-settings.inline .appearance-trigger {
+    width: 100%;
+  }
+
+  .game-header.expanded .appearance-settings.inline .appearance-trigger {
+    justify-content: center;
+  }
+
   .header-action-button {
     width: 100%;
   }
