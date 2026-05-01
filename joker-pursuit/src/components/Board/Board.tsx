@@ -326,7 +326,10 @@ const Board: React.FC<BoardProps> = ({
   }, [transform.translate]);
 
   const handleTouchStart = useCallback((e: TouchEvent) => {
-    if (e.touches.length !== 1) return; // Only handle single touch
+    if (e.touches.length !== 1) {
+      setIsDragging(false);
+      return;
+    }
     e.preventDefault(); // Prevent default touch actions
     
     const touch = e.touches[0];
@@ -360,7 +363,12 @@ const Board: React.FC<BoardProps> = ({
   }, [isDragging, dragStart, boardRef]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
-    if (!isDragging || e.touches.length !== 1 || !boardRef.current) return;
+    if (e.touches.length !== 1) {
+      setIsDragging(false);
+      return;
+    }
+
+    if (!isDragging || !boardRef.current) return;
     e.preventDefault(); // Prevent default touch actions like scrolling
     
     const touch = e.touches[0];

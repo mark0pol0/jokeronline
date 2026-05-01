@@ -158,16 +158,18 @@
 
 @media (max-width: 700px) {
   .card-hand {
-    justify-content: flex-start;
-    gap: 4px;
-    padding: 8px 4px 0;
+    --mobile-card-gap: 5px;
+    justify-content: center;
+    gap: var(--mobile-card-gap);
+    padding: 4px 2px 6px;
+    overflow: visible;
   }
 
   .playing-card {
-    width: clamp(50px, 15vw, 64px);
-    height: clamp(74px, 22vw, 94px);
+    width: min(62px, calc((100vw - 36px - (4 * var(--mobile-card-gap))) / 5));
+    height: min(90px, calc((100vw - 36px - (4 * var(--mobile-card-gap))) / 5 * 1.44));
     border-radius: 10px;
-    padding: 5px;
+    padding: 4px;
   }
 
   .card-rank,

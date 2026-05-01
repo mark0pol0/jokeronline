@@ -452,6 +452,7 @@ const GameController: React.FC<GameControllerProps> = ({
   
   // Add state for showing cards (for pass-and-play)
   const [showCards, setShowCards] = useState(false);
+  const [isMobileControlsOpen, setIsMobileControlsOpen] = useState(false);
   
   // Calculate responsive scaling factor based on viewport size - simplified approach
   const calculateResponsiveScale = () => {
@@ -484,6 +485,7 @@ const GameController: React.FC<GameControllerProps> = ({
   const initialDistanceRef = useRef(0);
   const initialScaleRef = useRef(0);
   const currentZoomRef = useRef(1.2); // Keep track of current zoom during pinch
+  const isPinchActiveRef = useRef(false);
   const handlePegSelectRef = useRef<(pegId: string) => void>(() => {});
   const handleSpaceSelectRef = useRef<(spaceId: string) => void>(() => {});
   const previousPegSnapshotRef = useRef<Map<string, string> | null>(null);
@@ -506,7 +508,9 @@ const GameController: React.FC<GameControllerProps> = ({
       // Calculate zoom increment based on current zoom level for acceleration
       // Increase the multiplier further to make the zoom steps more noticeable (0.15 to 0.2)
       const zoomIncrement = Math.max(0.15, prevZoom * 0.2);
-      return Math.min(prevZoom + zoomIncrement, MAX_ZOOM);
+      const nextZoom = Math.min(prevZoom + zoomIncrement, MAX_ZOOM);
+      currentZoomRef.current = nextZoom;
+      return nextZoom;
     });
   };
   
@@ -520,7 +524,9 @@ const GameController: React.FC<GameControllerProps> = ({
       // Calculate zoom decrement based on current zoom level for acceleration
       // Increase the multiplier further to make the zoom steps more noticeable (0.15 to 0.2)
       const zoomDecrement = Math.max(0.15, prevZoom * 0.2);
-      return Math.max(prevZoom - zoomDecrement, MIN_ZOOM);
+      const nextZoom = Math.max(prevZoom - zoomDecrement, MIN_ZOOM);
+      currentZoomRef.current = nextZoom;
+      return nextZoom;
     });
   };
   
@@ -531,6 +537,7 @@ const GameController: React.FC<GameControllerProps> = ({
     audio.play('ui');
     
     setZoomLevel(1.2); // Reset to initial zoom level
+    currentZoomRef.current = 1.2;
     
     // Reset board position to center
     const boardElement = document.querySelector('.board');
@@ -548,13 +555,18 @@ const GameController: React.FC<GameControllerProps> = ({
 
   // Touch handlers and zoom effect
   useEffect(() => {
+    isPinchActiveRef.current = isPinchActive;
+  }, [isPinchActive]);
+
+  // Touch handlers and zoom effect
+  useEffect(() => {
     const handleResize = () => {
       setResponsiveScale(calculateResponsiveScale());
     };
     
     const handleWheel = (e: WheelEvent) => {
       // Skip if pinch gesture is active
-      if (isPinchActive) return;
+      if (isPinchActiveRef.current) return;
       
       // Check if the wheel event is on the board area
       const boardArea = document.querySelector('.board-area');
@@ -574,7 +586,9 @@ const GameController: React.FC<GameControllerProps> = ({
         
         setZoomLevel(prevZoom => {
           const newZoom = prevZoom + zoomChange;
-          return Math.min(Math.max(newZoom, MIN_ZOOM), MAX_ZOOM);
+          const nextZoom = Math.min(Math.max(newZoom, MIN_ZOOM), MAX_ZOOM);
+          currentZoomRef.current = nextZoom;
+          return nextZoom;
         });
       }
     };
@@ -598,6 +612,7 @@ const GameController: React.FC<GameControllerProps> = ({
           e.preventDefault();
           
           // Mark that pinch is active
+          isPinchActiveRef.current = true;
           setIsPinchActive(true);
           
           // Add class to document to indicate pinch zooming is active
@@ -632,11 +647,12 @@ const GameController: React.FC<GameControllerProps> = ({
         return;
       }
       const boardRotation = (boardElement as HTMLElement).dataset.boardRotation || '0';
-      const boardTransform = `translate(-50%, -50%) rotate(${boardRotation}deg) scale(${newZoom})`;
+      const effectiveZoom = newZoom * responsiveScale;
+      const boardTransform = `translate(-50%, -50%) rotate(${boardRotation}deg) scale(${effectiveZoom})`;
       
       // During pinch gesture, ONLY update the DOM directly (no React state updates)
       // This prevents fighting between React renders and direct DOM manipulation
-      if (isPinchActive) {
+      if (isPinchActiveRef.current) {
         // Apply the new zoom directly for immediate feedback
         (boardElement as HTMLElement).style.transform = boardTransform;
         
@@ -654,7 +670,7 @@ const GameController: React.FC<GameControllerProps> = ({
     
     // Touch move handler scoped to this effect
     const handleTouchMoveLocal = (e: TouchEvent) => {
-      if (!isPinchActive || e.touches.length !== 2) return;
+      if (!isPinchActiveRef.current || e.touches.length !== 2) return;
       
       // Prevent default browser behavior
       e.preventDefault();
@@ -681,12 +697,13 @@ const GameController: React.FC<GameControllerProps> = ({
     const handleTouchEndLocal = (e: TouchEvent) => {
       if (e.touches.length < 2) {
         // If pinch was active but now ended, update React state with final zoom level
-        if (isPinchActive) {
+        if (isPinchActiveRef.current) {
           // Update the React state to match the final zoom level
           setZoomLevel(currentZoomRef.current);
         }
         
         // Reset pinch state when less than 2 fingers remain
+        isPinchActiveRef.current = false;
         setIsPinchActive(false);
         
         // Remove pinch zooming class
@@ -728,7 +745,7 @@ const GameController: React.FC<GameControllerProps> = ({
         cancelAnimationFrame(requestAnimationFrameIdRef.current);
       }
     };
-  }, [zoomLevel, isPinchActive, MIN_ZOOM, MAX_ZOOM]); // Dependencies that don't include the handlers
+  }, [zoomLevel, responsiveScale, MIN_ZOOM, MAX_ZOOM]); // Dependencies that don't include the handlers
   
   // Debug useEffect for peg tracking
   useEffect(() => {
@@ -3895,7 +3912,7 @@ const GameController: React.FC<GameControllerProps> = ({
   };
 
   return (
-    <div className="game-controller">
+    <div className={`game-controller ${isMobileControlsOpen ? 'mobile-controls-open' : ''}`}>
       <div className="game-container">
         {!isMultiplayer && (
           <div className="top-panel">
@@ -3974,6 +3991,21 @@ const GameController: React.FC<GameControllerProps> = ({
             </div>
           </div>
         )}
+
+        {gameState.phase === 'playing' && (
+          <button
+            type="button"
+            className="mobile-controls-toggle"
+            onClick={() => {
+              audio.play('ui');
+              setIsMobileControlsOpen(previous => !previous);
+            }}
+            aria-expanded={isMobileControlsOpen}
+            aria-controls="mobile-board-controls"
+          >
+            {isMobileControlsOpen ? 'Close' : 'Controls'}
+          </button>
+        )}
         
         {/* Main game board area */}
         <div className="board-area">
@@ -4036,6 +4068,58 @@ const GameController: React.FC<GameControllerProps> = ({
               <span style={{ fontSize: '14px' }}>⟲</span>
             </button>
           </div>
+
+          {gameState.phase === 'playing' && isMobileControlsOpen && (
+            <div
+              id="mobile-board-controls"
+              className="mobile-board-controls"
+            >
+              <div className="mobile-control-sheet-header">
+                <span>Board Controls</span>
+                <button
+                  type="button"
+                  className="mobile-control-close"
+                  onClick={() => setIsMobileControlsOpen(false)}
+                  aria-label="Close board controls"
+                >
+                  x
+                </button>
+              </div>
+              <div className="mobile-control-row">
+                <span className="mobile-control-label">Zoom</span>
+                <div className="mobile-zoom-actions">
+                  <button
+                    type="button"
+                    className={`mobile-control-button ${isPinchActive ? 'disabled' : ''}`}
+                    onClick={handleZoomOut}
+                    disabled={isPinchActive}
+                    aria-label="Zoom out"
+                  >
+                    −
+                  </button>
+                  <span className="mobile-zoom-value">{Math.round(zoomLevel * 100)}%</span>
+                  <button
+                    type="button"
+                    className={`mobile-control-button ${isPinchActive ? 'disabled' : ''}`}
+                    onClick={handleZoomIn}
+                    disabled={isPinchActive}
+                    aria-label="Zoom in"
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    className={`mobile-control-button wide ${isPinchActive ? 'disabled' : ''}`}
+                    onClick={handleResetZoom}
+                    disabled={isPinchActive}
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
+              <p className="mobile-control-hint">Pinch the board with two fingers to zoom. Drag with one finger to pan.</p>
+            </div>
+          )}
           
           {/* Card controls container - positioned at bottom of board area */}
           <div className="card-controls-container">

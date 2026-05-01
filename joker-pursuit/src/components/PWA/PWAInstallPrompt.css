@@ -81,7 +81,8 @@
   .pwa-install-banner {
     left: 8px;
     right: 8px;
-    bottom: calc(8px + env(safe-area-inset-bottom));
+    top: calc(8px + env(safe-area-inset-top));
+    bottom: auto;
   }
 
   .pwa-install-content {
