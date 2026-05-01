@@ -43,6 +43,8 @@ describe('GameController multiplayer snapshot sync', () => {
     );
 
     expect(screen.getByText('Your hand: Mark')).toBeInTheDocument();
+    expect(screen.getByText('Game')).toBeInTheDocument();
+    expect(screen.getByText('Turn')).toBeInTheDocument();
     expect(screen.getByText('120%')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '+' }));

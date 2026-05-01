@@ -236,6 +236,46 @@
   border-radius: 50%;
 }
 
+.timer-hud {
+  position: absolute;
+  top: 90px;
+  left: 16px;
+  z-index: 22;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+
+.timer-pill {
+  min-width: 94px;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(214, 234, 248, 0.26);
+  background: rgba(10, 21, 31, 0.62);
+  color: #f1f7fc;
+  box-shadow: 0 12px 22px rgba(5, 12, 19, 0.24);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.timer-label {
+  font-size: 0.64rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+  color: rgba(231, 243, 252, 0.68);
+}
+
+.timer-value {
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
 .zoom-controls {
   position: absolute;
   right: 16px;
@@ -747,6 +787,7 @@
 
 .theme-parlor .player-turn-indicator,
 .theme-parlor .zoom-controls,
+.theme-parlor .timer-pill,
 .theme-parlor .dev-switch,
 .theme-parlor .dev-controls-group,
 .theme-parlor .prompt-message,
@@ -808,6 +849,7 @@
 }
 
 .theme-parlor .zoom-control-label,
+.theme-parlor .timer-label,
 .theme-parlor .zoom-level,
 .theme-parlor .dev-label,
 .theme-parlor .multiplayer-hand-caption,
@@ -1032,6 +1074,28 @@
     max-width: min(240px, 100%);
     font-size: 0.78rem;
     padding: 7px 10px;
+  }
+
+  .timer-hud {
+    top: calc(env(safe-area-inset-top, 0px) + 126px);
+    left: 8px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .timer-pill {
+    min-width: 76px;
+    padding: 6px 8px;
+    border-radius: 10px;
+  }
+
+  .timer-label {
+    font-size: 0.58rem;
+  }
+
+  .timer-value {
+    font-size: 0.82rem;
   }
 
   .zoom-controls {

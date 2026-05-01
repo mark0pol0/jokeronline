@@ -46,6 +46,19 @@ interface GameControllerProps {
   onHarnessCommitStateToServer?: (nextState: GameState) => Promise<HarnessActionResult>;
 }
 
+const formatElapsedTime = (totalSeconds: number): string => {
+  const safeSeconds = Math.max(0, totalSeconds);
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = safeSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
+
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
 // Add new interface for nine card state
 interface NineCardState {
   direction?: 'forward' | 'backward';  // Explicitly typed as union
@@ -831,6 +844,9 @@ const GameController: React.FC<GameControllerProps> = ({
   const shouldShowDiscardButton = isMultiplayer
     ? Boolean(isCurrentPlayerTurn) && canUseDiscardButton(gameState, currentPlayer)
     : canUseDiscardButton(gameState, currentPlayer) && showCards;
+  const [gameStartedAt] = useState(() => Date.now());
+  const [turnStartedAt, setTurnStartedAt] = useState(() => Date.now());
+  const [timerNow, setTimerNow] = useState(() => Date.now());
   
   // Add new state for floating elements
   const [floatingElements, setFloatingElements] = useState<FloatingDecorElement[]>([]);
@@ -913,6 +929,21 @@ const GameController: React.FC<GameControllerProps> = ({
     clearInteractionState();
     setBumpMessage(undefined);
   }, [isMultiplayer, gameStateOverride, clearInteractionState]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setTimerNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    setTurnStartedAt(Date.now());
+  }, [gameState.currentPlayerIndex]);
+
+  const gameDurationLabel = formatElapsedTime(Math.floor((timerNow - gameStartedAt) / 1000));
+  const turnDurationLabel = formatElapsedTime(Math.floor((timerNow - turnStartedAt) / 1000));
 
   const runHarnessAutoPlaySingleTurn = (): HarnessActionResult<{
     action: 'play_move' | 'discard_hand' | 'game_over';
@@ -3927,6 +3958,19 @@ const GameController: React.FC<GameControllerProps> = ({
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {gameState.phase === 'playing' && (
+          <div className="timer-hud" aria-label="Game timers">
+            <div className="timer-pill">
+              <span className="timer-label">Game</span>
+              <span className="timer-value">{gameDurationLabel}</span>
+            </div>
+            <div className="timer-pill">
+              <span className="timer-label">Turn</span>
+              <span className="timer-value">{turnDurationLabel}</span>
             </div>
           </div>
         )}
