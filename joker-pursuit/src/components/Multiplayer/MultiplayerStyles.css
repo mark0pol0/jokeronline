@@ -583,7 +583,11 @@
 
 .multiplayer-game-controller {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  height: var(--jp-visual-viewport-height, 100dvh);
   overflow: hidden;
   background:
     radial-gradient(115% 95% at 50% -6%, rgba(55, 96, 120, 0.62) 0%, rgba(55, 96, 120, 0) 60%),

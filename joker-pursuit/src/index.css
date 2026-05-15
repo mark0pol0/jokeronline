@@ -26,6 +26,9 @@
   --radius-md: 18px;
   --radius-lg: 26px;
 
+  --jp-visual-viewport-height: 100dvh;
+  --jp-visual-viewport-bottom: 0px;
+
   --shadow-soft: 0 12px 28px rgba(22, 33, 48, 0.12);
   --shadow-medium: 0 18px 44px rgba(16, 27, 43, 0.2);
 }

@@ -456,9 +456,11 @@ const GameController: React.FC<GameControllerProps> = ({
   
   // Calculate responsive scaling factor based on viewport size - simplified approach
   const calculateResponsiveScale = () => {
-    // Get precise viewport dimensions
-    const viewportWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
-    const viewportHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+    const visualViewport = window.visualViewport;
+    const viewportWidth = visualViewport?.width
+      ?? Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+    const viewportHeight = visualViewport?.height
+      ?? Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
     
     // Fixed base size for better consistency
     const boardSize = 1200;
@@ -718,7 +720,10 @@ const GameController: React.FC<GameControllerProps> = ({
     };
     
     // Apply event listeners
+    const visualViewport = window.visualViewport;
     window.addEventListener('resize', handleResize);
+    visualViewport?.addEventListener('resize', handleResize);
+    visualViewport?.addEventListener('scroll', handleResize);
     window.addEventListener('wheel', handleWheel, { passive: false });
     
     // Add touch event listeners directly to the board area
@@ -732,6 +737,8 @@ const GameController: React.FC<GameControllerProps> = ({
     // Clean up
     return () => {
       window.removeEventListener('resize', handleResize);
+      visualViewport?.removeEventListener('resize', handleResize);
+      visualViewport?.removeEventListener('scroll', handleResize);
       window.removeEventListener('wheel', handleWheel);
       
       if (boardArea) {

@@ -5,6 +5,12 @@ import App from './App';
 beforeEach(() => {
   window.localStorage.clear();
   window.history.replaceState({}, '', '/');
+  document.documentElement.style.removeProperty('--jp-visual-viewport-height');
+  document.documentElement.style.removeProperty('--jp-visual-viewport-bottom');
+  Object.defineProperty(window, 'visualViewport', {
+    configurable: true,
+    value: undefined
+  });
 });
 
 test('renders home menu actions', () => {
@@ -57,4 +63,37 @@ test('initializes visual theme from local storage', () => {
   const { container } = render(<App />);
 
   expect(container.querySelector('.App')).toHaveAttribute('data-visual-theme', 'modern');
+});
+
+test('publishes visual viewport chrome offset for mobile Safari layouts', () => {
+  const listeners: Record<string, EventListener> = {};
+  const visualViewportMock = {
+    width: 393,
+    height: 700,
+    offsetTop: 0,
+    addEventListener: jest.fn((type: string, listener: EventListener) => {
+      listeners[type] = listener;
+    }),
+    removeEventListener: jest.fn()
+  };
+
+  Object.defineProperty(window, 'innerHeight', {
+    configurable: true,
+    value: 760
+  });
+  Object.defineProperty(window, 'visualViewport', {
+    configurable: true,
+    value: visualViewportMock
+  });
+
+  render(<App />);
+
+  expect(document.documentElement.style.getPropertyValue('--jp-visual-viewport-height')).toBe('700px');
+  expect(document.documentElement.style.getPropertyValue('--jp-visual-viewport-bottom')).toBe('60px');
+
+  visualViewportMock.height = 720;
+  listeners.resize(new Event('resize'));
+
+  expect(document.documentElement.style.getPropertyValue('--jp-visual-viewport-height')).toBe('720px');
+  expect(document.documentElement.style.getPropertyValue('--jp-visual-viewport-bottom')).toBe('40px');
 });

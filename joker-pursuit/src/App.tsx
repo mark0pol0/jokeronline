@@ -27,6 +27,22 @@ type GamePhase = 'home' | 'setup' | 'playing' | 'online' | 'online-playing';
 const EASY_MODE_STORAGE_KEY = 'joker-pursuit.easy-mode';
 const VISUAL_THEME_STORAGE_KEY = 'joker-pursuit.visual-theme';
 
+const updateVisualViewportCssVars = () => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return;
+  }
+
+  const viewport = window.visualViewport;
+  const viewportHeight = viewport?.height ?? window.innerHeight;
+  const viewportBottom = viewport
+    ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+    : 0;
+  const rootStyle = document.documentElement.style;
+
+  rootStyle.setProperty('--jp-visual-viewport-height', `${Math.round(viewportHeight)}px`);
+  rootStyle.setProperty('--jp-visual-viewport-bottom', `${Math.round(viewportBottom)}px`);
+};
+
 const getInitialLinkRoomCode = (): string | null => {
   if (typeof window === 'undefined') {
     return null;
@@ -89,6 +105,25 @@ const App: React.FC = () => {
     'player-1': 1,
     'player-2': 2
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const visualViewport = window.visualViewport;
+    updateVisualViewportCssVars();
+
+    window.addEventListener('resize', updateVisualViewportCssVars);
+    visualViewport?.addEventListener('resize', updateVisualViewportCssVars);
+    visualViewport?.addEventListener('scroll', updateVisualViewportCssVars);
+
+    return () => {
+      window.removeEventListener('resize', updateVisualViewportCssVars);
+      visualViewport?.removeEventListener('resize', updateVisualViewportCssVars);
+      visualViewport?.removeEventListener('scroll', updateVisualViewportCssVars);
+    };
+  }, []);
 
   // Effect to transition to multiplayer game when the game is started
   useEffect(() => {
