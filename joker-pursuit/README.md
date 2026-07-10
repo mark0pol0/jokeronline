@@ -15,6 +15,7 @@ A digital implementation of the classic Joker Pursuit board game with both local
 
 - Node.js (v14 or higher)
 - npm (v6 or higher)
+- Xcode 26.2 or newer for the native iOS app
 
 ### Installation
 
@@ -52,6 +53,26 @@ npm run dev
 ```
 
 3. Open your browser and navigate to `http://localhost:3000`
+
+#### Native iOS App
+
+The native SwiftUI client lives in `ios/App` and shares the production V2 multiplayer backend with the web client.
+
+1. Open `ios/App/App.xcodeproj` in Xcode.
+2. Select the `App` scheme and an iOS 26 simulator or device.
+3. Build and run.
+
+Command-line build and test:
+
+```sh
+xcodebuild -project ios/App/App.xcodeproj -scheme App \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+
+xcodebuild -project ios/App/App.xcodeproj -scheme AppTests \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+```
+
+The iOS app uses native SwiftUI, Canvas board rendering, system materials, Dynamic Type, VoiceOver labels, Reduce Motion handling, sensory feedback, Keychain session persistence on devices, and a dependency-free native Socket.IO transport.
 
 #### Regression Harness (CLI + Playwright)
 
